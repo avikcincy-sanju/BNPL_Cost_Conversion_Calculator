@@ -441,13 +441,15 @@ export default function App() {
       [''],
       ['Prepared using the BNPL Commercial Impact Model. All pricing, assumptions, and scenarios are user-configurable and should be independently validated prior to operational or financial decision-making.'],
     ];
-    const csv = rows.map(r => r.map(c => `"${c}"`).join(',')).join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
+    const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
     a.download = `bnpl-scenario-${inputs.provider.toLowerCase()}-${inputs.country.replace(/\s+/g, '-').toLowerCase()}-${Date.now()}.csv`;
+    document.body.appendChild(a);
     a.click();
+    document.body.removeChild(a);
     URL.revokeObjectURL(url);
   };
 
