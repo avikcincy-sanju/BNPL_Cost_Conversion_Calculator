@@ -202,16 +202,45 @@ export function ScenarioComparison({ inputs, feeRow, activeScenarios }: Scenario
           </tbody>
         </table>
       </div>
-      {bestIdx >= 0 && (
-        <p className="text-xs text-gray-500 flex items-center gap-1.5">
-          <Award size={12} className="text-emerald-600" />
-          <span>
-            <strong className="text-gray-700">Best scenario under current assumptions:</strong>{' '}
-            {rows[bestIdx].scenario.name} — Net Commercial Impact of{' '}
-            <strong className="text-emerald-700">{fmt(rows[bestIdx].netCommercialImpact)}</strong>
-          </span>
-        </p>
-      )}
+      {rows.length >= 2 && (() => {
+        const best = rows[bestIdx];
+        const worstIdx = rows.length - 1;
+        const worst = rows[worstIdx];
+        const bestPositive = best.netCommercialImpact >= 0;
+        const worstPositive = worst.netCommercialImpact >= 0;
+        return (
+          <div className="grid grid-cols-2 gap-3">
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3.5">
+              <div className="flex items-center gap-1.5 mb-1">
+                <TrendingUp size={13} className="text-emerald-600 flex-shrink-0" />
+                <span className="text-xs font-bold uppercase tracking-wide text-emerald-700">Best Scenario</span>
+              </div>
+              <p className="text-sm font-bold text-emerald-800">{best.scenario.name}</p>
+              <p className="text-xs text-emerald-700 mt-0.5">
+                Net Impact:{' '}
+                <strong>{bestPositive ? '+' : ''}{fmt(best.netCommercialImpact)}</strong>
+              </p>
+              <p className="text-xs text-emerald-600 mt-0.5 opacity-80">
+                {best.scenario.bnplAdoptionPercent}% adoption · {best.scenario.conversionUpliftPercent}% uplift
+              </p>
+            </div>
+            <div className="rounded-xl border border-red-200 bg-red-50 p-3.5">
+              <div className="flex items-center gap-1.5 mb-1">
+                <TrendingDown size={13} className="text-red-500 flex-shrink-0" />
+                <span className="text-xs font-bold uppercase tracking-wide text-red-600">Worst Scenario</span>
+              </div>
+              <p className="text-sm font-bold text-red-800">{worst.scenario.name}</p>
+              <p className="text-xs text-red-700 mt-0.5">
+                Net Impact:{' '}
+                <strong>{worstPositive ? '+' : ''}{fmt(worst.netCommercialImpact)}</strong>
+              </p>
+              <p className="text-xs text-red-600 mt-0.5 opacity-80">
+                {worst.scenario.bnplAdoptionPercent}% adoption · {worst.scenario.conversionUpliftPercent}% uplift
+              </p>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
@@ -237,6 +266,7 @@ export function ProviderComparison({ inputs, activeRows }: ProviderComparisonPro
   }, [regionRows, inputs]);
 
   const bestIdx = rows.length > 0 ? 0 : -1; // already sorted desc by NCI
+  const worstNci = rows.length > 0 ? rows[rows.length - 1].netCommercialImpact : 0;
 
   if (regionRows.length === 0) {
     return (
@@ -256,6 +286,7 @@ export function ProviderComparison({ inputs, activeRows }: ProviderComparisonPro
                 'Provider', 'Fee %', 'Fixed Fee', 'Currency',
                 'Intl Fee?', 'Intl Fee %',
                 'BNPL Processing Cost', 'Incr. Processing Cost', 'Net Commercial Impact',
+                'Savings vs Highest Cost',
               ].map(h => (
                 <th key={h} className="px-4 py-2.5 text-left text-gray-500 font-semibold uppercase tracking-wide whitespace-nowrap">
                   {h}
@@ -300,6 +331,13 @@ export function ProviderComparison({ inputs, activeRows }: ProviderComparisonPro
                       <NciIcon size={11} />
                       {nci >= 0 ? '+' : ''}{fmt(nci)}
                     </span>
+                  </td>
+                  <td className="px-4 py-3">
+                    {rows.length > 1 ? (
+                      <span className={`font-semibold ${nci - worstNci > 0 ? 'text-emerald-600' : 'text-gray-400'}`}>
+                        {nci - worstNci > 0 ? `+${fmt(nci - worstNci)}` : '—'}
+                      </span>
+                    ) : <span className="text-gray-400">—</span>}
                   </td>
                 </tr>
               );

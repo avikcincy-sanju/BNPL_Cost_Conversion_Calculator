@@ -5,6 +5,7 @@ import {
 } from 'recharts';
 import {
   Info, Copy, Download, ChevronDown, TrendingUp, TrendingDown, Minus, Ban, Lightbulb,
+  ShieldCheck, AlertTriangle, ShieldAlert,
 } from 'lucide-react';
 
 import type { AppConfig, CalcInputs, FeeRow } from './types';
@@ -296,25 +297,70 @@ export default function App() {
     recColor = 'bg-red-50 border-red-300 text-red-800';
     RecIcon = Ban;
   } else if (netCommercialImpact > 500 && breakEvenConversionUplift < inputs.conversionUpliftPercent) {
-    recText = 'BNPL appears commercially favorable under the current assumptions. The expected conversion uplift more than offsets the incremental processing cost.';
+    recText = 'Under the current user-configured assumptions, BNPL appears directionally favorable from a commercial perspective. The modeled conversion uplift more than offsets the estimated incremental processing cost.';
     recColor = 'bg-emerald-50 border-emerald-300 text-emerald-800';
     RecIcon = TrendingUp;
   } else if (Math.abs(netCommercialImpact) <= 500) {
-    recText = 'BNPL appears commercially neutral under the current assumptions. This may be suitable for a controlled pilot where adoption and conversion data can be measured.';
+    recText = 'Under the current user-configured assumptions, BNPL appears directionally neutral from a commercial perspective. This may be suitable for a controlled pilot where adoption and conversion data can be independently measured.';
     recColor = 'bg-amber-50 border-amber-300 text-amber-800';
     RecIcon = Minus;
   } else {
-    recText = 'BNPL appears cost-negative under the current assumptions unless conversion uplift or athlete adoption is higher than expected.';
+    recText = 'Under the current user-configured assumptions, BNPL does not appear directionally favorable unless modeled conversion uplift or athlete adoption exceeds current estimates.';
     recColor = 'bg-red-50 border-red-300 text-red-800';
     RecIcon = TrendingDown;
   }
 
   const eventRec: Record<string, string> = {
-    'IRONMAN Full Distance': 'Strongest fit — high ticket value maximizes the benefit of BNPL financing for athletes.',
-    'IRONMAN 70.3': 'Moderate to strong fit — price point still benefits from installment options.',
-    "Rock 'n' Roll Marathon": 'Selective fit — evaluate based on specific event price point and target demographic.',
-    'Other': 'Evaluate case by case based on ticket price, audience, and competitive landscape.',
+    'IRONMAN Full Distance': 'BNPL economics generally improve as registration value increases because financing convenience offsets incremental processing costs more effectively.',
+    'IRONMAN 70.3': 'Moderate to strong directional fit — price point still benefits from installment financing availability.',
+    "Rock 'n' Roll Marathon": 'Selective fit — evaluate based on specific event price point, target demographic, and competitive context.',
+    'Other': 'Evaluate on a case-by-case basis using event price, audience profile, and competitive landscape.',
   };
+
+  // ─── Model Confidence ────────────────────────────────────────────────────────
+  const missingCount = [
+    inputs.bnplAdoptionPercent === 0,
+    inputs.conversionUpliftPercent === 0,
+    inputs.contributionMarginPercent === 0,
+    rateUnavailable,
+  ].filter(Boolean).length;
+
+  const confidence: 'High' | 'Medium' | 'Low' =
+    missingCount === 0 ? 'High' : missingCount === 1 ? 'Medium' : 'Low';
+
+  const confidenceConfig = {
+    High:   { color: 'text-emerald-700 bg-emerald-50 border-emerald-200', icon: ShieldCheck,   dot: 'bg-emerald-500' },
+    Medium: { color: 'text-amber-700 bg-amber-50 border-amber-200',       icon: AlertTriangle, dot: 'bg-amber-500'   },
+    Low:    { color: 'text-red-700 bg-red-50 border-red-200',             icon: ShieldAlert,   dot: 'bg-red-500'     },
+  };
+
+  // ─── Opportunity Score ────────────────────────────────────────────────────────
+  // 0-100 composite based on net impact, break-even, adoption, and margin
+  const opportunityScore = useMemo(() => {
+    if (rateUnavailable) return 0;
+    // NCI component: cap at ±$200k, map to 0-40 pts
+    const nciScore = Math.min(40, Math.max(0, (results.netCommercialImpact / 200000) * 40));
+    // Break-even component: lower is better; 0-30 pts
+    const beuScore = breakEvenConversionUplift <= 0 ? 30
+      : breakEvenConversionUplift > inputs.conversionUpliftPercent ? 0
+      : Math.min(30, (1 - breakEvenConversionUplift / inputs.conversionUpliftPercent) * 30);
+    // Adoption component: 0-15 pts
+    const adoptionScore = Math.min(15, (inputs.bnplAdoptionPercent / 25) * 15);
+    // Margin component: 0-15 pts
+    const marginScore = Math.min(15, (inputs.contributionMarginPercent / 80) * 15);
+    return Math.round(nciScore + beuScore + adoptionScore + marginScore);
+  }, [results, inputs, rateUnavailable, breakEvenConversionUplift]);
+
+  const scoreLabel =
+    opportunityScore >= 80 ? 'Strong Opportunity' :
+    opportunityScore >= 60 ? 'Moderate Opportunity' :
+    opportunityScore >= 40 ? 'Neutral' : 'Validate Further';
+
+  const scoreColor =
+    opportunityScore >= 80 ? 'text-emerald-700 bg-emerald-50 border-emerald-200' :
+    opportunityScore >= 60 ? 'text-blue-700 bg-blue-50 border-blue-200' :
+    opportunityScore >= 40 ? 'text-amber-700 bg-amber-50 border-amber-200' :
+                             'text-red-700 bg-red-50 border-red-200';
 
   const absorptionLabel: Record<string, string> = {
     'IRONMAN absorbs BNPL cost': 'IRONMAN bears 100% of BNPL fee',
@@ -333,56 +379,79 @@ export default function App() {
   const copyExecSummary = () => {
     const ts = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' });
     const lines = [
-      `BNPL Cost & Conversion Calculator — Executive Summary`,
+      `BNPL Commercial Impact Model — Executive Summary`,
       `Generated: ${ts}`,
       ``,
-      `Configuration`,
+      `CONFIGURATION`,
       `  Name: ${config.metadata.configName} v${config.metadata.version}`,
       `  Owner: ${config.metadata.owner}`,
       `  Source: ${config.metadata.source}`,
       `  Last Updated: ${config.metadata.lastUpdated}`,
       config.metadata.notes ? `  Notes: ${config.metadata.notes}` : '',
       ``,
-      `Selected Fee Configuration`,
+      `SELECTED FEE CONFIGURATION`,
       `  Provider: ${inputs.provider}`,
       `  Region: ${inputs.country}`,
       `  Event Type: ${inputs.eventType}`,
-      feeRow
-        ? `  Fee %: ${feeRow.percentFee}%`
-        : `  Fee %: No active rate configured`,
+      feeRow ? `  Fee %: ${feeRow.percentFee}%` : `  Fee %: No active rate configured`,
       feeRow ? `  Fixed Fee: ${fmtPrecise(feeRow.fixedFee)}` : '',
       feeRow ? `  Currency: ${feeRow.currency}` : '',
       feeRow ? `  International Fee Applicable: ${feeRow.intlFeeApplicable ? 'Yes' : 'No'}` : '',
       feeRow?.intlFeeApplicable ? `  International Fee %: ${feeRow.intlFeePercent}% (${inputs.applyIntlFee ? 'Applied' : 'Toggled off'})` : '',
       usedScenario ? `  Scenario Preset: ${usedScenario.name}` : '',
       ``,
-      `Key Inputs`,
+      `MODEL CONFIDENCE & SCORE`,
+      `  Model Confidence: ${confidence}`,
+      `  Commercial Opportunity Score: ${opportunityScore} / 100 — ${scoreLabel}`,
+      ``,
+      `KEY INPUTS`,
       `  Registration Price: ${fmt(inputs.registrationPrice)} | Expected Registrations: ${fmt(inputs.expectedRegistrations, 'number')}`,
       `  BNPL Adoption: ${inputs.bnplAdoptionPercent}% | Conversion Uplift: ${inputs.conversionUpliftPercent}%`,
       `  Contribution Margin: ${inputs.contributionMarginPercent}% | Fee Absorption: ${inputs.feeAbsorption}`,
       `  Refund Rate: ${inputs.refundRatePercent}% | Avg Refund: ${inputs.avgRefundAmountPercent}%`,
       `  Standard Card Fee: ${inputs.standardCardFeePercent}% + ${fmtPrecise(inputs.standardCardFixedFee)}`,
       ``,
-      `Key Outputs`,
+      `KEY OUTPUTS`,
       `  Gross Revenue: ${fmt(results.grossRevenue)}`,
-      `  BNPL Volume: ${fmt(results.bnplVolume)}`,
+      `  Estimated BNPL Volume: ${fmt(results.bnplVolume)}`,
       `  Standard Card Cost on BNPL Volume: ${fmt(results.stdCardCostOnBnpl)}`,
       `  BNPL Base Processing Cost: ${fmt(results.bnplBaseCost)}`,
       `  International Payment Methods Fee: ${fmt(results.intlFeeAmount)}`,
       `  BNPL Processing Cost (Gross): ${fmt(results.bnplProcessingCost)}`,
       `  Estimated BNPL Processing Cost to IRONMAN: ${fmt(results.ironmanCost)}`,
-      `  Incremental Processing Cost: ${fmt(results.incrementalProcessingCost)}`,
-      `  Incremental Revenue from Uplift: ${fmt(results.incrementalRevenue)}`,
-      `  Incremental Contribution (${inputs.contributionMarginPercent}% margin): ${fmt(results.incrementalContribution)}`,
+      `  Estimated Incremental Processing Cost: ${fmt(results.incrementalProcessingCost)}`,
+      `  Estimated Incremental Revenue from Uplift: ${fmt(results.incrementalRevenue)}`,
+      `  Estimated Incremental Contribution (${inputs.contributionMarginPercent}% margin): ${fmt(results.incrementalContribution)}`,
       `  Estimated Refund Exposure: ${fmt(results.refundExposure)}`,
-      `  Net Commercial Impact: ${fmt(results.netCommercialImpact)}`,
+      `  Estimated Net Commercial Impact: ${fmt(results.netCommercialImpact)}`,
       `  Break-even Conversion Uplift: ${fmt(results.breakEvenConversionUplift, 'percent')}`,
       ``,
-      `Commercial Recommendation`,
+      `COMMERCIAL RECOMMENDATION`,
       `  ${recText}`,
       rateUnavailable ? '' : `  ${eventRec[inputs.eventType] ?? ''}`,
       ``,
-      `Rates and assumptions are user-configured and should be validated before business decision-making.`,
+      `MODEL SCOPE`,
+      `  Included:`,
+      `    • Provider processing fees`,
+      `    • BNPL adoption assumptions`,
+      `    • Conversion uplift assumptions`,
+      `    • Contribution margin assumptions`,
+      `    • Refund exposure estimates`,
+      `    • Scenario comparisons`,
+      `    • Provider comparisons`,
+      `    • Break-even analysis`,
+      ``,
+      `  Not Included:`,
+      `    • Chargeback losses`,
+      `    • Fraud losses`,
+      `    • Treasury settlement timing impacts`,
+      `    • FX spread impacts`,
+      `    • Operational support costs`,
+      `    • Tax implications`,
+      ``,
+      `────────────────────────────────────────────────────────────────────────────`,
+      `Prepared using the BNPL Commercial Impact Model.`,
+      `All pricing, assumptions, and scenarios are user-configurable and should be independently validated prior to operational or financial decision-making.`,
     ].filter(l => l !== '');
     navigator.clipboard.writeText(lines.join('\n'));
     setCopied(true);
@@ -444,7 +513,17 @@ export default function App() {
       ['Net Commercial Impact', results.netCommercialImpact],
       ['Break-even Conversion Uplift %', results.breakEvenConversionUplift],
       [''],
+      ['MODEL CONFIDENCE & SCORE'],
+      ['Model Confidence', confidence],
+      ['Commercial Opportunity Score', `${opportunityScore} / 100 — ${scoreLabel}`],
+      [''],
+      ['MODEL SCOPE'],
+      ['Included', 'Provider processing fees; BNPL adoption assumptions; Conversion uplift assumptions; Contribution margin assumptions; Refund exposure estimates; Scenario comparisons; Provider comparisons; Break-even analysis'],
+      ['Not Included', 'Chargeback losses; Fraud losses; Treasury settlement timing impacts; FX spread impacts; Operational support costs; Tax implications'],
+      [''],
       ['Note', 'Rates and assumptions are based on user-configured inputs and should be validated before production use.'],
+      [''],
+      ['Prepared using the BNPL Commercial Impact Model. All pricing, assumptions, and scenarios are user-configurable and should be independently validated prior to operational or financial decision-making.'],
     ];
     const csv = rows.map(r => r.map(c => `"${c}"`).join(',')).join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
@@ -468,19 +547,20 @@ export default function App() {
       <header className="bg-white border-b border-gray-200 sticky top-0 z-40">
         <div className="max-w-screen-2xl mx-auto px-6 py-4 flex items-center justify-between">
           <div>
-            <div className="flex items-center gap-3 flex-wrap">
-              <h1 className="text-lg font-bold text-gray-900 tracking-tight">BNPL Cost & Conversion Calculator</h1>
-              <span className="px-2 py-0.5 text-xs font-medium bg-blue-50 text-blue-700 rounded-full border border-blue-200 whitespace-nowrap">
+            <h1 className="text-lg font-bold text-gray-900 tracking-tight">BNPL Commercial Impact Model</h1>
+            <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+              <span className="text-xs font-semibold text-gray-700">
                 {config.metadata.configName} v{config.metadata.version}
               </span>
-              <span className="px-2 py-0.5 text-xs font-medium bg-gray-100 text-gray-500 rounded-full border border-gray-200 whitespace-nowrap">
-                Last Updated: {config.metadata.lastUpdated}
-              </span>
+              <span className="text-gray-300">·</span>
+              <span className="text-xs text-gray-500">Last Updated: {config.metadata.lastUpdated}</span>
+              {config.metadata.owner && (
+                <>
+                  <span className="text-gray-300">·</span>
+                  <span className="text-xs text-gray-500">{config.metadata.owner}</span>
+                </>
+              )}
             </div>
-            <p className="text-xs text-gray-500 mt-0.5">
-              {config.metadata.owner && <span className="font-medium text-gray-600">{config.metadata.owner} · </span>}
-              {config.metadata.source}
-            </p>
           </div>
           <div className="flex items-center gap-3">
             <button
@@ -794,6 +874,35 @@ export default function App() {
             </div>
           )}
 
+          {/* Model Confidence + Opportunity Score row */}
+          {!rateUnavailable && (() => {
+            const ConfIcon = confidenceConfig[confidence].icon;
+            return (
+              <div className="grid grid-cols-2 gap-3">
+                <div className={`rounded-xl border p-4 ${confidenceConfig[confidence].color}`}>
+                  <div className="flex items-center gap-2 mb-1">
+                    <ConfIcon size={13} className="flex-shrink-0" />
+                    <p className="text-xs font-semibold uppercase tracking-wide">Model Confidence</p>
+                  </div>
+                  <p className="text-xl font-bold">{confidence}</p>
+                  <p className="text-xs mt-0.5 opacity-70">
+                    {confidence === 'High' ? 'All key assumptions provided and provider active'
+                      : confidence === 'Medium' ? 'One assumption missing or zero — review inputs'
+                      : 'Multiple assumptions missing — outputs are directional only'}
+                  </p>
+                </div>
+                <div className={`rounded-xl border p-4 ${scoreColor}`}>
+                  <p className="text-xs font-semibold uppercase tracking-wide mb-1">Commercial Opportunity Score</p>
+                  <div className="flex items-end gap-2">
+                    <p className="text-xl font-bold">{opportunityScore}<span className="text-sm font-semibold opacity-60"> / 100</span></p>
+                  </div>
+                  <p className="text-xs mt-0.5 font-semibold">{scoreLabel}</p>
+                  <p className="text-[10px] mt-0.5 opacity-60">Based on net impact, break-even, adoption & margin</p>
+                </div>
+              </div>
+            );
+          })()}
+
           {/* Recommendation */}
           {!rateUnavailable && (
             <div className={`rounded-2xl border p-5 ${recColor}`}>
@@ -804,48 +913,53 @@ export default function App() {
                   <p className="text-sm leading-relaxed">{recText}</p>
                   <p className="text-xs mt-2 opacity-80 font-medium">{eventRec[inputs.eventType]}</p>
                   <p className="text-xs mt-1.5 opacity-55 italic">
-                    Directional model based on current Stripe contracted pricing and assumed athlete behavior.
+                    Directional model based on user-configured pricing and estimated athlete behavior. All outputs are modeled estimates only.
                   </p>
 
-                  {/* Executive Insights */}
+                  {/* Executive Insights — 5 always-present structured insights */}
                   <div className="mt-4 pt-3 border-t border-current/20">
-                    <div className="flex items-center gap-1.5 mb-2">
+                    <div className="flex items-center gap-1.5 mb-2.5">
                       <Lightbulb size={13} className="opacity-70" />
                       <span className="text-xs font-bold uppercase tracking-wide opacity-70">Executive Insights</span>
                     </div>
-                    <ul className="space-y-1.5">
-                      {[
-                        breakEvenConversionUplift < 1
-                          ? `Break-even conversion uplift is only ${fmt(breakEvenConversionUplift, 'percent')} — a very small improvement in athlete conversion is enough to offset the incremental BNPL cost.`
+                    <ul className="space-y-2">
+                      {/* A. Break-even insight */}
+                      <li className="flex items-start gap-2 text-xs leading-relaxed opacity-90">
+                        <span className="text-current opacity-50 flex-shrink-0 font-bold mt-0.5">✓</span>
+                        {breakEvenConversionUplift < 0.5
+                          ? `Break-even conversion uplift is only ${fmt(breakEvenConversionUplift, 'percent')}, suggesting a minimal improvement in athlete conversion is sufficient to offset estimated incremental BNPL costs.`
                           : breakEvenConversionUplift < inputs.conversionUpliftPercent
-                            ? `Break-even uplift (${fmt(breakEvenConversionUplift, 'percent')}) is below your assumed ${inputs.conversionUpliftPercent}% — the model is currently on the favorable side of neutral.`
-                            : `Break-even uplift (${fmt(breakEvenConversionUplift, 'percent')}) exceeds your assumed ${inputs.conversionUpliftPercent}% — conversion performance will need to exceed the model assumption to reach positive net impact.`,
-
-                        inputs.registrationPrice >= 500
-                          ? `High registration price (${fmt(inputs.registrationPrice)}) improves BNPL economics — the fixed per-transaction fee is a smaller proportion of total cost at this price point.`
-                          : `Lower registration price (${fmt(inputs.registrationPrice)}) makes the fixed per-transaction fee a larger relative cost — monitor closely at high adoption rates.`,
-
-                        results.incrementalProcessingCost / results.grossRevenue < 0.01 && results.grossRevenue > 0
-                          ? `Incremental processing cost (${fmt(results.incrementalProcessingCost)}) is less than 1% of gross registration revenue — a manageable cost relative to total event scale.`
-                          : `Incremental processing cost (${fmt(results.incrementalProcessingCost)}) represents ${fmt((results.incrementalProcessingCost / results.grossRevenue) * 100, 'percent')} of gross registration revenue.`,
-
-                        results.refundExposure > 0
-                          ? `Refund exposure pool is ${fmt(results.refundExposure)} — operational processes for BNPL refund handling should be confirmed before launch.`
-                          : null,
-
-                        feeRow?.intlFeeApplicable && inputs.applyIntlFee
-                          ? `The ${feeRow.intlFeePercent}% international payment methods fee adds ${fmt(results.intlFeeAmount)} to total BNPL cost. Confirm applicability with Stripe before production use.`
-                          : null,
-
-                        netCommercialImpact > 0
-                          ? `Under current assumptions, BNPL is directionally favorable — net commercial impact is ${fmt(netCommercialImpact)} positive.`
-                          : `Under current assumptions, BNPL shows a net cost of ${fmt(Math.abs(netCommercialImpact))}. Review adoption assumptions or consider the athlete surcharge model.`,
-                      ].filter(Boolean).slice(0, 5).map((insight, i) => (
-                        <li key={i} className="flex items-start gap-2 text-xs leading-relaxed opacity-85">
-                          <span className="w-1 h-1 rounded-full bg-current mt-1.5 flex-shrink-0 opacity-60" />
-                          {insight}
-                        </li>
-                      ))}
+                            ? `Break-even conversion uplift is ${fmt(breakEvenConversionUplift, 'percent')}, which is below the modeled ${inputs.conversionUpliftPercent}% assumption — the model sits on the directionally favorable side of neutral.`
+                            : `Break-even conversion uplift is ${fmt(breakEvenConversionUplift, 'percent')}, which exceeds the modeled ${inputs.conversionUpliftPercent}% assumption — actual conversion performance would need to exceed current estimates for positive net impact.`}
+                      </li>
+                      {/* B. Cost insight */}
+                      <li className="flex items-start gap-2 text-xs leading-relaxed opacity-90">
+                        <span className="text-current opacity-50 flex-shrink-0 font-bold mt-0.5">✓</span>
+                        {results.grossRevenue > 0
+                          ? `Estimated incremental processing cost (${fmt(results.incrementalProcessingCost)}) represents ${((results.incrementalProcessingCost / results.grossRevenue) * 100).toFixed(2)}% of gross registration revenue under current assumptions.`
+                          : `Incremental processing cost is estimated at ${fmt(results.incrementalProcessingCost)} under current assumptions.`}
+                      </li>
+                      {/* C. Revenue/Uplift insight */}
+                      <li className="flex items-start gap-2 text-xs leading-relaxed opacity-90">
+                        <span className="text-current opacity-50 flex-shrink-0 font-bold mt-0.5">✓</span>
+                        {results.incrementalContribution > results.incrementalProcessingCost
+                          ? `Modeled conversion uplift generates an estimated ${fmt(results.incrementalContribution)} in incremental contribution — significantly exceeding the estimated incremental processing expense of ${fmt(results.incrementalProcessingCost)}.`
+                          : `Modeled conversion uplift generates an estimated ${fmt(results.incrementalContribution)} in incremental contribution, which does not fully offset the estimated incremental processing expense of ${fmt(results.incrementalProcessingCost)} under current assumptions.`}
+                      </li>
+                      {/* D. Refund exposure insight */}
+                      <li className="flex items-start gap-2 text-xs leading-relaxed opacity-90">
+                        <span className="text-current opacity-50 flex-shrink-0 font-bold mt-0.5">✓</span>
+                        {results.refundExposure > 0
+                          ? `Estimated refund exposure is ${fmt(results.refundExposure)} based on a ${inputs.refundRatePercent}% refund rate and ${inputs.avgRefundAmountPercent}% average refund amount — operational refund handling processes should be validated prior to launch.`
+                          : `No refund exposure is modeled under current assumptions. Validate refund rate assumptions before launch.`}
+                      </li>
+                      {/* E. Provider competitiveness insight */}
+                      <li className="flex items-start gap-2 text-xs leading-relaxed opacity-90">
+                        <span className="text-current opacity-50 flex-shrink-0 font-bold mt-0.5">✓</span>
+                        {feeRow
+                          ? `${feeRow.provider} is the currently selected provider for ${feeRow.country} at ${feeRow.percentFee}% + ${fmtPrecise(feeRow.fixedFee)} per transaction${feeRow.intlFeeApplicable ? ` with a ${feeRow.intlFeePercent}% international payment methods fee applicable` : ''}. Use the Provider Comparison section to evaluate alternatives in this market.`
+                          : `No active provider is configured for the selected market. Add a fee configuration in Admin / Assumptions Configuration to enable provider comparisons.`}
+                      </li>
                     </ul>
                   </div>
                 </div>
