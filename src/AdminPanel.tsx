@@ -1,8 +1,8 @@
-import { useState, useRef } from 'react';
+import { useState } from 'react';
 import {
-  Plus, Trash2, Upload, Download, RotateCcw, ChevronDown, ChevronUp, AlertCircle,
+  Plus, Trash2, RotateCcw, ChevronDown, ChevronUp, XCircle,
 } from 'lucide-react';
-import type { AppConfig, FeeRow, ScenarioPreset, DefaultModelInputs, ConfigMetadata } from './types';
+import type { AppConfig, FeeRow, ScenarioPreset, DefaultModelInputs } from './types';
 import { STARTER_CONFIG, EVENT_TYPES, FEE_ABSORPTIONS, uid } from './config';
 
 // ─── Shared mini input styles ─────────────────────────────────────────────────
@@ -42,53 +42,6 @@ function Section({ title, children, badge }: { title: string; children: React.Re
   );
 }
 
-// ─── Metadata Editor ─────────────────────────────────────────────────────────
-
-function MetadataEditor({
-  metadata,
-  onChange,
-}: {
-  metadata: ConfigMetadata;
-  onChange: (m: ConfigMetadata) => void;
-}) {
-  const set = <K extends keyof ConfigMetadata>(key: K, value: string) =>
-    onChange({ ...metadata, [key]: value });
-
-  const inputCls = 'w-full px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900';
-  const LabelEl = ({ children }: { children: React.ReactNode }) => (
-    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{children}</label>
-  );
-
-  return (
-    <div className="grid grid-cols-3 gap-4">
-      <div>
-        <LabelEl>Configuration Name</LabelEl>
-        <input className={inputCls} value={metadata.configName} onChange={e => set('configName', e.target.value)} placeholder="e.g. Stripe BNPL Amendment" />
-      </div>
-      <div>
-        <LabelEl>Version</LabelEl>
-        <input className={inputCls} value={metadata.version} onChange={e => set('version', e.target.value)} placeholder="e.g. 1.0" />
-      </div>
-      <div>
-        <LabelEl>Owner</LabelEl>
-        <input className={inputCls} value={metadata.owner} onChange={e => set('owner', e.target.value)} placeholder="e.g. Avik Nandi" />
-      </div>
-      <div>
-        <LabelEl>Source</LabelEl>
-        <input className={inputCls} value={metadata.source} onChange={e => set('source', e.target.value)} placeholder="e.g. Executed Stripe Amendment May 2026" />
-      </div>
-      <div>
-        <LabelEl>Last Updated</LabelEl>
-        <input type="date" className={inputCls} value={metadata.lastUpdated} onChange={e => set('lastUpdated', e.target.value)} />
-      </div>
-      <div>
-        <LabelEl>Notes</LabelEl>
-        <input className={inputCls} value={metadata.notes} onChange={e => set('notes', e.target.value)} placeholder="e.g. Initial BNPL commercial impact model" />
-      </div>
-    </div>
-  );
-}
-
 // ─── Fee Table Editor ─────────────────────────────────────────────────────────
 function FeeTableEditor({
   rows,
@@ -121,7 +74,7 @@ function FeeTableEditor({
   return (
     <div className="space-y-3">
       <p className="text-xs text-gray-500 leading-relaxed">
-        These are starter defaults based on the May 2026 Stripe Amendment. Every row is fully editable — add, remove, activate, or deactivate any configuration.
+        Starter defaults based on the May 2026 Stripe Amendment. Every row is fully editable — add, remove, activate, or deactivate any configuration.
       </p>
       <div className="overflow-x-auto rounded-lg border border-gray-200">
         <table className="w-full text-xs min-w-[1000px]">
@@ -329,47 +282,18 @@ interface AdminPanelProps {
 
 export default function AdminPanel({ config, onChange, onClearStorage }: AdminPanelProps) {
   const [panelOpen, setPanelOpen] = useState(false);
-  const [importError, setImportError] = useState('');
-  const [importSuccess, setImportSuccess] = useState(false);
-  const fileRef = useRef<HTMLInputElement>(null);
 
   const availableProviders = [...new Set(config.feeTable.filter(r => r.active).map(r => r.provider))].sort();
   const availableCountries = [...new Set(config.feeTable.filter(r => r.active).map(r => r.country))].sort();
 
-  const exportConfig = () => {
-    const blob = new Blob([JSON.stringify(config, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'bnpl-calculator-config.json';
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
-  const importConfig = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setImportError('');
-    setImportSuccess(false);
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = ev => {
-      try {
-        const parsed = JSON.parse(ev.target?.result as string) as AppConfig;
-        if (!parsed.feeTable || !parsed.scenarios || !parsed.defaults) throw new Error('Invalid config structure');
-        onChange(parsed);
-        setImportSuccess(true);
-        setTimeout(() => setImportSuccess(false), 3000);
-      } catch {
-        setImportError('Invalid JSON format. Please export a valid configuration first.');
-      }
-    };
-    reader.readAsText(file);
-    e.target.value = '';
+  const clearFeeTable = () => {
+    if (confirm('Clear the provider fee table? All fee rows will be removed.')) {
+      onChange({ ...config, feeTable: [] });
+    }
   };
 
   const resetToDefaults = () => {
     if (confirm('Reset all configuration to starter defaults? This cannot be undone.')) {
-      onChange(structuredClone(STARTER_CONFIG));
       onClearStorage();
     }
   };
@@ -399,59 +323,23 @@ export default function AdminPanel({ config, onChange, onClearStorage }: AdminPa
       {panelOpen && (
         <div className="mt-3 space-y-3 border border-slate-200 rounded-2xl p-5 bg-slate-50">
 
-          {/* Data Governance Disclaimer */}
-          <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-xl p-4">
-            <AlertCircle size={15} className="text-amber-500 flex-shrink-0 mt-0.5" />
-            <p className="text-xs text-amber-800 leading-relaxed">
-              <strong>Data Governance Notice:</strong> This tool does not rely on hidden hardcoded pricing assumptions.
-              Pricing, scenario presets, and default model assumptions are user-configurable and should be validated before use.
-              Changes made here are saved to browser local storage and persist across sessions.
-            </p>
-          </div>
-
-          {/* Import / Export / Reset */}
+          {/* Actions row */}
           <div className="flex items-center gap-3 flex-wrap">
-            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Configuration:</span>
             <button
               type="button"
-              onClick={exportConfig}
+              onClick={clearFeeTable}
               className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
             >
-              <Download size={12} /> Export Configuration JSON
+              <XCircle size={12} /> Clear Saved Configuration
             </button>
-            <button
-              type="button"
-              onClick={() => fileRef.current?.click()}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
-            >
-              <Upload size={12} /> Import Configuration JSON
-            </button>
-            <input ref={fileRef} type="file" accept=".json" className="hidden" onChange={importConfig} />
             <button
               type="button"
               onClick={resetToDefaults}
               className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-red-700 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 transition-colors"
             >
-              <RotateCcw size={12} /> Reset to Starter Defaults
+              <RotateCcw size={12} /> Reset to Defaults
             </button>
-            <button
-              type="button"
-              onClick={() => { onClearStorage(); }}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-gray-500 bg-gray-100 border border-gray-200 rounded-lg hover:bg-gray-200 transition-colors"
-            >
-              Clear Saved Configuration
-            </button>
-            {importSuccess && <span className="text-xs text-emerald-600 font-semibold">Configuration imported successfully.</span>}
-            {importError && <span className="text-xs text-red-600 font-semibold">{importError}</span>}
           </div>
-
-          {/* Configuration Metadata */}
-          <Section title="Configuration Metadata">
-            <MetadataEditor
-              metadata={config.metadata}
-              onChange={metadata => onChange({ ...config, metadata })}
-            />
-          </Section>
 
           {/* Provider Fee Table */}
           <Section title="Provider Fee Table" badge={`${config.feeTable.filter(r => r.active).length} active`}>
