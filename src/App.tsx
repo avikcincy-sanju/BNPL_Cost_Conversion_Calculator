@@ -376,77 +376,112 @@ export default function App() {
 
   // Export CSV
   const exportCsv = () => {
-    const rows: (string | number)[][] = [
-      ['BNPL Cost & Conversion Calculator — Export'],
-      ['Generated', new Date().toISOString()],
+    const fmtC = (n: number) =>
+      new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(Math.round(n));
+    const fmtPct = (n: number) => `${parseFloat(n.toFixed(4))}%`;
+    const fmtPreciseC = (n: number) =>
+      new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
+    const now = new Date();
+    const dateStr = now.toISOString().slice(0, 10);
+    const dateTimeStr = `${dateStr} ${now.toTimeString().slice(0, 5)}`;
+
+    // Scenario comparison rows
+    const scenarioRows = activeScenarios.map(s => {
+      const r = calcResults({ ...inputs, bnplAdoptionPercent: s.bnplAdoptionPercent, conversionUpliftPercent: s.conversionUpliftPercent, refundRatePercent: s.refundRatePercent }, feeRow);
+      return [s.name, `${s.bnplAdoptionPercent}%`, `${s.conversionUpliftPercent}%`, `${s.refundRatePercent}%`, fmtC(r.netCommercialImpact)];
+    });
+
+    // Provider comparison rows (current region)
+    const regionFeeRows = activeRows.filter(r => r.country.toLowerCase() === inputs.country.toLowerCase());
+    const providerRows = regionFeeRows
+      .map(row => {
+        const r = calcResults({ ...inputs, provider: row.provider }, row);
+        return { row, nci: r.netCommercialImpact };
+      })
+      .sort((a, b) => b.nci - a.nci)
+      .map(({ row, nci }) => [row.provider, `${row.percentFee}%`, fmtPreciseC(row.fixedFee), fmtC(nci)]);
+
+    const rows: string[][] = [
+      ['Metric', 'Value'],
       [''],
-      ['CONFIGURATION METADATA'],
-      ['Configuration Name', config.metadata.configName],
-      ['Version', config.metadata.version],
-      ...(config.metadata.owner ? [['Owner', config.metadata.owner]] : []),
-      ['Source', config.metadata.source],
-      ['Last Updated', config.metadata.lastUpdated],
-      ['Notes', config.metadata.notes],
-      [''],
-      ['INPUTS'],
-      ['Country / Region', inputs.country],
+      ['CONFIGURATION'],
+      ['Generated On', dateTimeStr],
       ['Provider', inputs.provider],
+      ['Region', inputs.country],
       ['Event Type', inputs.eventType],
-      ['Scenario Preset Used', usedScenario?.name ?? 'Custom'],
-      ['Registration Price', inputs.registrationPrice],
-      ['Expected Registrations', inputs.expectedRegistrations],
-      ['BNPL Adoption %', inputs.bnplAdoptionPercent],
-      ['Conversion Uplift %', inputs.conversionUpliftPercent],
-      ['Contribution Margin %', inputs.contributionMarginPercent],
+      ['Scenario Preset', usedScenario?.name ?? 'Custom'],
       ['Fee Absorption Strategy', inputs.feeAbsorption],
-      ...(isSurcharge ? [['Athlete Surcharge %', inputs.athleteSurchargePercent]] : []),
-      ['Refund Rate %', inputs.refundRatePercent],
-      ['Avg Refund Amount %', inputs.avgRefundAmountPercent],
+      ...(feeRow ? [
+        ['Provider Fee %', `${feeRow.percentFee}%`],
+        ['Provider Fixed Fee', fmtPreciseC(feeRow.fixedFee)],
+        ['International Fee Applied', inputs.applyIntlFee && feeRow.intlFeeApplicable ? `Yes (${feeRow.intlFeePercent}%)` : 'No'],
+      ] : [['Fee Configuration', 'Not available for selected provider/region']]),
       [''],
-      ['SELECTED FEE CONFIGURATION'],
-      ['Provider', feeRow?.provider ?? 'N/A'],
-      ['Region', feeRow?.country ?? 'N/A'],
-      ['Percentage Fee %', feeRow?.percentFee ?? 'N/A'],
-      ['Fixed Fee', feeRow?.fixedFee ?? 'N/A'],
-      ['Currency', feeRow?.currency ?? 'N/A'],
-      ['Intl Fee Applicable', feeRow?.intlFeeApplicable ? 'Yes' : 'No'],
-      ['Intl Fee Applied', inputs.applyIntlFee && feeRow?.intlFeeApplicable ? 'Yes' : 'No'],
-      ['Intl Fee %', feeRow?.intlFeePercent ?? 'N/A'],
-      ['Source / Notes', feeRow?.notes ?? 'N/A'],
+      ['KEY INPUTS'],
+      ['Registration Price', fmtC(inputs.registrationPrice)],
+      ['Expected Registrations', String(inputs.expectedRegistrations)],
+      ['BNPL Adoption %', fmtPct(inputs.bnplAdoptionPercent)],
+      ['Conversion Uplift %', fmtPct(inputs.conversionUpliftPercent)],
+      ['Contribution Margin %', fmtPct(inputs.contributionMarginPercent)],
+      ['Refund Rate %', fmtPct(inputs.refundRatePercent)],
+      ['Avg Refund Amount %', fmtPct(inputs.avgRefundAmountPercent)],
+      ...(isSurcharge ? [['Athlete Surcharge %', fmtPct(inputs.athleteSurchargePercent)]] : []),
       [''],
-      ['OUTPUTS'],
-      ['Gross Revenue', results.grossRevenue],
-      ['BNPL Volume', results.bnplVolume],
-      ['Standard Card Cost on BNPL Volume', results.stdCardCostOnBnpl],
-      ['BNPL Base Processing Cost', results.bnplBaseCost],
-      ['International Payment Methods Fee', results.intlFeeAmount],
-      ['BNPL Processing Cost (Gross)', results.bnplProcessingCost],
-      ['Estimated BNPL Processing Cost to IRONMAN', results.ironmanCost],
-      ['Incremental Processing Cost', results.incrementalProcessingCost],
-      ['Incremental Revenue from Uplift', results.incrementalRevenue],
-      [`Incremental Contribution (${inputs.contributionMarginPercent}% margin)`, results.incrementalContribution],
-      ['Refund Exposure', results.refundExposure],
-      ['Net Commercial Impact', results.netCommercialImpact],
-      ['Break-even Conversion Uplift %', results.breakEvenConversionUplift],
+      ['REVENUE & VOLUME'],
+      ['Gross Revenue', fmtC(results.grossRevenue)],
+      ['BNPL Volume', fmtC(results.bnplVolume)],
+      ['Incremental Registrations', String(Math.round(results.incrementalRegistrations))],
+      ['Incremental Revenue', fmtC(results.incrementalRevenue)],
       [''],
-      ['MODEL CONFIDENCE & SCORE'],
+      ['PROCESSING COSTS'],
+      ['Standard Card Cost on BNPL Volume', fmtC(results.stdCardCostOnBnpl)],
+      ['BNPL Processing Cost', fmtC(results.bnplProcessingCost)],
+      ['BNPL Cost to IRONMAN (after absorption)', fmtC(results.ironmanCost)],
+      ['Incremental Processing Cost', fmtC(results.incrementalProcessingCost)],
+      [''],
+      ['COMMERCIAL OUTPUTS'],
+      ['Incremental Contribution', fmtC(results.incrementalContribution)],
+      ['Refund Exposure', fmtC(results.refundExposure)],
+      ['Net Commercial Impact', fmtC(results.netCommercialImpact)],
+      ['Break-even Conversion Uplift', fmtPct(results.breakEvenConversionUplift)],
+      [''],
+      ['MODEL ASSESSMENT'],
+      ['Commercial Opportunity Score', `${opportunityScore} / 100`],
       ['Model Confidence', confidence],
-      ['Commercial Opportunity Score', `${opportunityScore} / 100 — ${scoreLabel}`],
+      ['Commercial Assessment', scoreLabel],
       [''],
-      ['MODEL SCOPE'],
-      ['Included', 'Provider processing fees; BNPL adoption assumptions; Conversion uplift assumptions; Contribution margin assumptions; Refund exposure estimates; Scenario comparisons; Provider comparisons; Break-even analysis'],
-      ['Not Included', 'Chargeback losses; Fraud losses; Treasury settlement timing impacts; FX spread impacts; Operational support costs; Tax implications'],
-      [''],
-      ['Note', 'Rates and assumptions are based on user-configured inputs and should be validated before production use.'],
-      [''],
-      ['Prepared using the BNPL Commercial Impact Model. All pricing, assumptions, and scenarios are user-configurable and should be independently validated prior to operational or financial decision-making.'],
     ];
-    const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
+
+    if (scenarioRows.length > 0) {
+      rows.push(['SCENARIO COMPARISON'], ['']);
+      rows.push(['Scenario', 'Adoption', 'Uplift', 'Refund Rate', 'Net Commercial Impact']);
+      scenarioRows.forEach(r => rows.push(r));
+      rows.push(['']);
+    }
+
+    if (providerRows.length > 0) {
+      rows.push(['PROVIDER COMPARISON'], ['']);
+      rows.push(['Provider', 'Fee %', 'Fixed Fee', 'Net Commercial Impact']);
+      providerRows.forEach(r => rows.push(r));
+      rows.push(['']);
+    }
+
+    rows.push(
+      ['MODEL LIMITATIONS'],
+      [''],
+      ['This model estimates directional commercial impact only and is not a financial guarantee.'],
+      ['BNPL adoption and conversion uplift assumptions should be validated through pilot data.'],
+      ['Pricing assumptions are user-configurable.'],
+      ['Net impact excludes operational costs, chargebacks, fraud losses, and implementation effort.'],
+    );
+
+    const csv = rows.map(r => r.map(c => `"${c.replace(/"/g, '""')}"`).join(',')).join('\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `bnpl-scenario-${inputs.provider.toLowerCase()}-${inputs.country.replace(/\s+/g, '-').toLowerCase()}-${Date.now()}.csv`;
+    const regionSlug = inputs.country.split(' ').map(w => w[0]).join('').toUpperCase() || inputs.country.slice(0, 2).toUpperCase();
+    a.download = `BNPL_Commercial_Impact_${inputs.provider.replace(/\s+/g, '_')}_${regionSlug}_${dateStr}.csv`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
