@@ -351,8 +351,8 @@ export default function App() {
   }, [results, inputs, rateUnavailable, breakEvenConversionUplift]);
 
   const scoreLabel =
-    opportunityScore >= 80 ? 'Strong Opportunity' :
-    opportunityScore >= 60 ? 'Moderate Opportunity' :
+    opportunityScore >= 80 ? 'Directionally Favorable' :
+    opportunityScore >= 60 ? 'Favorable' :
     opportunityScore >= 40 ? 'Neutral' : 'Validate Further';
 
   const scoreColor =
@@ -378,7 +378,7 @@ export default function App() {
   const exportCsv = () => {
     const fmtC = (n: number) =>
       new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(Math.round(n));
-    const fmtPct = (n: number) => `${parseFloat(n.toFixed(4))}%`;
+    const fmtPct = (n: number) => `${n.toFixed(2)}%`;
     const fmtPreciseC = (n: number) =>
       new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
     const now = new Date();
@@ -388,33 +388,42 @@ export default function App() {
     // Scenario comparison rows
     const scenarioRows = activeScenarios.map(s => {
       const r = calcResults({ ...inputs, bnplAdoptionPercent: s.bnplAdoptionPercent, conversionUpliftPercent: s.conversionUpliftPercent, refundRatePercent: s.refundRatePercent }, feeRow);
-      return [s.name, `${s.bnplAdoptionPercent}%`, `${s.conversionUpliftPercent}%`, `${s.refundRatePercent}%`, fmtC(r.netCommercialImpact)];
+      return [s.name, fmtPct(s.bnplAdoptionPercent), fmtPct(s.conversionUpliftPercent), fmtPct(s.refundRatePercent), fmtC(r.netCommercialImpact)];
     });
 
-    // Provider comparison rows (current region)
+    // Provider comparison rows (current region), sorted desc by NCI
     const regionFeeRows = activeRows.filter(r => r.country.toLowerCase() === inputs.country.toLowerCase());
-    const providerRows = regionFeeRows
-      .map(row => {
-        const r = calcResults({ ...inputs, provider: row.provider }, row);
-        return { row, nci: r.netCommercialImpact };
-      })
-      .sort((a, b) => b.nci - a.nci)
-      .map(({ row, nci }) => [row.provider, `${row.percentFee}%`, fmtPreciseC(row.fixedFee), fmtC(nci)]);
+    const providerCalc = regionFeeRows
+      .map(row => ({ row, nci: calcResults({ ...inputs, provider: row.provider }, row).netCommercialImpact }))
+      .sort((a, b) => b.nci - a.nci);
+    const bestNci = providerCalc.length > 0 ? providerCalc[0].nci : 0;
+    const providerRows = providerCalc.map(({ row, nci }, i) => [
+      row.provider,
+      fmtPct(row.percentFee),
+      fmtPreciseC(row.fixedFee),
+      fmtC(nci),
+      i === 0 ? 'Best' : fmtC(nci - bestNci),
+    ]);
 
     const rows: string[][] = [
+      ['IRONMAN BNPL Commercial Impact Model'],
+      ['Version', '1.0'],
+      ['Configuration', config.metadata.configName],
+      ['Configuration Version', config.metadata.version],
+      ['Generated', dateTimeStr],
+      [''],
       ['Metric', 'Value'],
       [''],
       ['CONFIGURATION'],
-      ['Generated On', dateTimeStr],
       ['Provider', inputs.provider],
       ['Region', inputs.country],
       ['Event Type', inputs.eventType],
       ['Scenario Preset', usedScenario?.name ?? 'Custom'],
       ['Fee Absorption Strategy', inputs.feeAbsorption],
       ...(feeRow ? [
-        ['Provider Fee %', `${feeRow.percentFee}%`],
+        ['Provider Fee %', fmtPct(feeRow.percentFee)],
         ['Provider Fixed Fee', fmtPreciseC(feeRow.fixedFee)],
-        ['International Fee Applied', inputs.applyIntlFee && feeRow.intlFeeApplicable ? `Yes (${feeRow.intlFeePercent}%)` : 'No'],
+        ['International Fee Applied', inputs.applyIntlFee && feeRow.intlFeeApplicable ? `Yes (${fmtPct(feeRow.intlFeePercent)})` : 'No'],
       ] : [['Fee Configuration', 'Not available for selected provider/region']]),
       [''],
       ['KEY INPUTS'],
@@ -461,7 +470,7 @@ export default function App() {
 
     if (providerRows.length > 0) {
       rows.push(['PROVIDER COMPARISON'], ['']);
-      rows.push(['Provider', 'Fee %', 'Fixed Fee', 'Net Commercial Impact']);
+      rows.push(['Provider', 'Fee %', 'Fixed Fee', 'Net Commercial Impact', 'Difference vs Best']);
       providerRows.forEach(r => rows.push(r));
       rows.push(['']);
     }
@@ -469,10 +478,9 @@ export default function App() {
     rows.push(
       ['MODEL LIMITATIONS'],
       [''],
-      ['This model estimates directional commercial impact only and is not a financial guarantee.'],
-      ['BNPL adoption and conversion uplift assumptions should be validated through pilot data.'],
-      ['Pricing assumptions are user-configurable.'],
-      ['Net impact excludes operational costs, chargebacks, fraud losses, and implementation effort.'],
+      ['Prepared using the IRONMAN BNPL Commercial Impact Model.'],
+      ['This tool is intended for directional commercial evaluation and executive decision support.'],
+      ['Pricing, adoption assumptions, conversion assumptions, contribution margins, and scenario configurations are user-controlled and should be independently validated before operational or financial decisions are made.'],
     );
 
     const csv = rows.map(r => r.map(c => `"${c.replace(/"/g, '""')}"`).join(',')).join('\n');
