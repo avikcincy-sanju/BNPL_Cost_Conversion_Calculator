@@ -4,7 +4,7 @@ import {
   Cell, PieChart, Pie
 } from 'recharts';
 import {
-  Info, Copy, Download, ChevronDown, TrendingUp, TrendingDown, Minus, Ban, Lightbulb,
+  Info, Download, ChevronDown, TrendingUp, TrendingDown, Minus, Ban, Lightbulb,
   ShieldCheck, AlertTriangle, ShieldAlert,
 } from 'lucide-react';
 
@@ -215,7 +215,6 @@ export default function App() {
   const [inputs, setInputs] = useState<CalcInputs>(() =>
     loadInputsFromStorage(buildInputsFromDefaults(loadConfig()))
   );
-  const [copied, setCopied] = useState(false);
 
   // Persist config & inputs on every change
   useEffect(() => { saveConfig(config); }, [config]);
@@ -375,89 +374,6 @@ export default function App() {
       s.refundRatePercent === inputs.refundRatePercent
     ), [activeScenarios, inputs.bnplAdoptionPercent, inputs.conversionUpliftPercent, inputs.refundRatePercent]);
 
-  // Copy executive summary
-  const copyExecSummary = () => {
-    const ts = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-    const lines = [
-      `BNPL Commercial Impact Model — Executive Summary`,
-      `Generated: ${ts}`,
-      ``,
-      `CONFIGURATION`,
-      `  Name: ${config.metadata.configName} v${config.metadata.version}`,
-      `  Owner: ${config.metadata.owner}`,
-      `  Source: ${config.metadata.source}`,
-      `  Last Updated: ${config.metadata.lastUpdated}`,
-      config.metadata.notes ? `  Notes: ${config.metadata.notes}` : '',
-      ``,
-      `SELECTED FEE CONFIGURATION`,
-      `  Provider: ${inputs.provider}`,
-      `  Region: ${inputs.country}`,
-      `  Event Type: ${inputs.eventType}`,
-      feeRow ? `  Fee %: ${feeRow.percentFee}%` : `  Fee %: No active rate configured`,
-      feeRow ? `  Fixed Fee: ${fmtPrecise(feeRow.fixedFee)}` : '',
-      feeRow ? `  Currency: ${feeRow.currency}` : '',
-      feeRow ? `  International Fee Applicable: ${feeRow.intlFeeApplicable ? 'Yes' : 'No'}` : '',
-      feeRow?.intlFeeApplicable ? `  International Fee %: ${feeRow.intlFeePercent}% (${inputs.applyIntlFee ? 'Applied' : 'Toggled off'})` : '',
-      usedScenario ? `  Scenario Preset: ${usedScenario.name}` : '',
-      ``,
-      `MODEL CONFIDENCE & SCORE`,
-      `  Model Confidence: ${confidence}`,
-      `  Commercial Opportunity Score: ${opportunityScore} / 100 — ${scoreLabel}`,
-      ``,
-      `KEY INPUTS`,
-      `  Registration Price: ${fmt(inputs.registrationPrice)} | Expected Registrations: ${fmt(inputs.expectedRegistrations, 'number')}`,
-      `  BNPL Adoption: ${inputs.bnplAdoptionPercent}% | Conversion Uplift: ${inputs.conversionUpliftPercent}%`,
-      `  Contribution Margin: ${inputs.contributionMarginPercent}% | Fee Absorption: ${inputs.feeAbsorption}`,
-      `  Refund Rate: ${inputs.refundRatePercent}% | Avg Refund: ${inputs.avgRefundAmountPercent}%`,
-      `  Standard Card Fee: ${inputs.standardCardFeePercent}% + ${fmtPrecise(inputs.standardCardFixedFee)}`,
-      ``,
-      `KEY OUTPUTS`,
-      `  Gross Revenue: ${fmt(results.grossRevenue)}`,
-      `  Estimated BNPL Volume: ${fmt(results.bnplVolume)}`,
-      `  Standard Card Cost on BNPL Volume: ${fmt(results.stdCardCostOnBnpl)}`,
-      `  BNPL Base Processing Cost: ${fmt(results.bnplBaseCost)}`,
-      `  International Payment Methods Fee: ${fmt(results.intlFeeAmount)}`,
-      `  BNPL Processing Cost (Gross): ${fmt(results.bnplProcessingCost)}`,
-      `  Estimated BNPL Processing Cost to IRONMAN: ${fmt(results.ironmanCost)}`,
-      `  Estimated Incremental Processing Cost: ${fmt(results.incrementalProcessingCost)}`,
-      `  Estimated Incremental Revenue from Uplift: ${fmt(results.incrementalRevenue)}`,
-      `  Estimated Incremental Contribution (${inputs.contributionMarginPercent}% margin): ${fmt(results.incrementalContribution)}`,
-      `  Estimated Refund Exposure: ${fmt(results.refundExposure)}`,
-      `  Estimated Net Commercial Impact: ${fmt(results.netCommercialImpact)}`,
-      `  Break-even Conversion Uplift: ${fmt(results.breakEvenConversionUplift, 'percent')}`,
-      ``,
-      `COMMERCIAL RECOMMENDATION`,
-      `  ${recText}`,
-      rateUnavailable ? '' : `  ${eventRec[inputs.eventType] ?? ''}`,
-      ``,
-      `MODEL SCOPE`,
-      `  Included:`,
-      `    • Provider processing fees`,
-      `    • BNPL adoption assumptions`,
-      `    • Conversion uplift assumptions`,
-      `    • Contribution margin assumptions`,
-      `    • Refund exposure estimates`,
-      `    • Scenario comparisons`,
-      `    • Provider comparisons`,
-      `    • Break-even analysis`,
-      ``,
-      `  Not Included:`,
-      `    • Chargeback losses`,
-      `    • Fraud losses`,
-      `    • Treasury settlement timing impacts`,
-      `    • FX spread impacts`,
-      `    • Operational support costs`,
-      `    • Tax implications`,
-      ``,
-      `────────────────────────────────────────────────────────────────────────────`,
-      `Prepared using the BNPL Commercial Impact Model.`,
-      `All pricing, assumptions, and scenarios are user-configurable and should be independently validated prior to operational or financial decision-making.`,
-    ].filter(l => l !== '');
-    navigator.clipboard.writeText(lines.join('\n'));
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
   // Export CSV
   const exportCsv = () => {
     const rows: (string | number)[][] = [
@@ -467,7 +383,7 @@ export default function App() {
       ['CONFIGURATION METADATA'],
       ['Configuration Name', config.metadata.configName],
       ['Version', config.metadata.version],
-      ['Owner', config.metadata.owner],
+      ...(config.metadata.owner ? [['Owner', config.metadata.owner]] : []),
       ['Source', config.metadata.source],
       ['Last Updated', config.metadata.lastUpdated],
       ['Notes', config.metadata.notes],
@@ -563,13 +479,6 @@ export default function App() {
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <button
-              onClick={copyExecSummary}
-              className="flex items-center gap-2 px-3 py-2 text-xs font-semibold bg-white border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-700 transition-all"
-            >
-              <Copy size={13} />
-              {copied ? 'Copied!' : 'Copy Executive Summary'}
-            </button>
             <button
               onClick={exportCsv}
               className="flex items-center gap-2 px-3 py-2 text-xs font-semibold bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-all"

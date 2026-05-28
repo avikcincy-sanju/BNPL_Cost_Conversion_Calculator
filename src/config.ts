@@ -46,7 +46,7 @@ export const STARTER_DEFAULTS: DefaultModelInputs = {
 export const STARTER_METADATA: ConfigMetadata = {
   configName: 'Stripe BNPL Amendment',
   version: '1.0',
-  owner: 'Avik Nandi',
+  owner: '',
   source: 'Executed Stripe Amendment May 2026',
   lastUpdated: new Date().toISOString().slice(0, 10),
   notes: 'Initial BNPL commercial impact model',
