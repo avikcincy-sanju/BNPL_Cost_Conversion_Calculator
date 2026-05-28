@@ -466,19 +466,6 @@ export default function App() {
         <div className="max-w-screen-2xl mx-auto px-6 py-4 flex items-center justify-between">
           <div>
             <h1 className="text-lg font-bold text-gray-900 tracking-tight">BNPL Commercial Impact Model</h1>
-            <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-              <span className="text-xs font-semibold text-gray-700">
-                {config.metadata.configName} v{config.metadata.version}
-              </span>
-              <span className="text-gray-300">·</span>
-              <span className="text-xs text-gray-500">Last Updated: {config.metadata.lastUpdated}</span>
-              {config.metadata.owner && (
-                <>
-                  <span className="text-gray-300">·</span>
-                  <span className="text-xs text-gray-500">{config.metadata.owner}</span>
-                </>
-              )}
-            </div>
           </div>
           <div className="flex items-center gap-3">
             <button
