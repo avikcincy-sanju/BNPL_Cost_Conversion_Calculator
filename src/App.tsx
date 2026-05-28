@@ -185,6 +185,58 @@ function calcResults(inputs: CalcInputs, feeRow: FeeRow | null) {
   };
 }
 
+// ─── Scenario case label map ─────────────────────────────────────────────────
+
+const SCENARIO_CASE: Record<string, string> = {
+  Conservative: 'Low Case',
+  Moderate: 'Base Case',
+  Aggressive: 'High Case',
+};
+
+// ─── Score Drivers Panel ──────────────────────────────────────────────────────
+
+function ScoreDrivers({
+  nciScore, beuScore, adoptionScore, marginScore, colorClass,
+}: { nciScore: number; beuScore: number; adoptionScore: number; marginScore: number; colorClass: string }) {
+  const [open, setOpen] = useState(false);
+  const drivers = [
+    { label: 'Net Commercial Impact', weight: '40%', score: nciScore, max: 40 },
+    { label: 'Break-Even Conversion Threshold', weight: '30%', score: beuScore, max: 30 },
+    { label: 'BNPL Adoption Assumptions', weight: '15%', score: adoptionScore, max: 15 },
+    { label: 'Contribution Margin', weight: '15%', score: marginScore, max: 15 },
+  ];
+  return (
+    <div className="mt-1.5">
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        className="flex items-center gap-1 text-[10px] opacity-60 hover:opacity-90 transition-opacity"
+      >
+        <ChevronDown size={10} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
+        Score Drivers
+      </button>
+      {open && (
+        <div className="mt-2 space-y-1.5 border-t border-current/20 pt-2">
+          {drivers.map(d => (
+            <div key={d.label}>
+              <div className="flex items-center justify-between text-[10px] mb-0.5">
+                <span className="opacity-80">{d.label}</span>
+                <span className="opacity-60 font-mono">{Math.round(d.score)}/{d.max} ({d.weight})</span>
+              </div>
+              <div className="h-1 rounded-full bg-current/10 overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-current/40 transition-all"
+                  style={{ width: `${(d.score / d.max) * 100}%` }}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Main App ─────────────────────────────────────────────────────────────────
 
 export default function App() {
@@ -296,15 +348,15 @@ export default function App() {
     recColor = 'bg-red-50 border-red-300 text-red-800';
     RecIcon = Ban;
   } else if (netCommercialImpact > 500 && breakEvenConversionUplift < inputs.conversionUpliftPercent) {
-    recText = 'Under the current user-configured assumptions, BNPL appears directionally favorable from a commercial perspective. The modeled conversion uplift more than offsets the estimated incremental processing cost.';
+    recText = 'Under current assumptions, BNPL appears commercially favorable for this event. The modeled conversion uplift is sufficient to offset estimated incremental processing costs.';
     recColor = 'bg-emerald-50 border-emerald-300 text-emerald-800';
     RecIcon = TrendingUp;
   } else if (Math.abs(netCommercialImpact) <= 500) {
-    recText = 'Under the current user-configured assumptions, BNPL appears directionally neutral from a commercial perspective. This may be suitable for a controlled pilot where adoption and conversion data can be independently measured.';
+    recText = 'Under current assumptions, BNPL appears commercially neutral for this event. This may be suitable for a controlled pilot where adoption and conversion data can be independently measured.';
     recColor = 'bg-amber-50 border-amber-300 text-amber-800';
     RecIcon = Minus;
   } else {
-    recText = 'Under the current user-configured assumptions, BNPL does not appear directionally favorable unless modeled conversion uplift or athlete adoption exceeds current estimates.';
+    recText = 'Under current assumptions, BNPL does not appear commercially favorable for this event unless modeled conversion uplift or athlete adoption exceeds current estimates.';
     recColor = 'bg-red-50 border-red-300 text-red-800';
     RecIcon = TrendingDown;
   }
@@ -407,10 +459,12 @@ export default function App() {
 
     const rows: string[][] = [
       ['IRONMAN BNPL Commercial Impact Model'],
-      ['Version', '1.0'],
+      ['Model Version', `BNPL Commercial Impact Model v1.0`],
       ['Configuration', config.metadata.configName],
       ['Configuration Version', config.metadata.version],
-      ['Generated', dateTimeStr],
+      ['Generated On', dateTimeStr],
+      ['Provider', inputs.provider],
+      ['Country', inputs.country],
       [''],
       ['Metric', 'Value'],
       [''],
@@ -541,9 +595,12 @@ export default function App() {
                       conversionUpliftPercent: s.conversionUpliftPercent,
                       refundRatePercent: s.refundRatePercent,
                     }))}
-                    className="py-2 px-3 text-xs font-semibold rounded-lg border border-gray-200 hover:border-blue-400 hover:bg-blue-50 hover:text-blue-700 text-gray-600 transition-all"
+                    className="py-2 px-3 text-xs font-semibold rounded-lg border border-gray-200 hover:border-blue-400 hover:bg-blue-50 hover:text-blue-700 text-gray-600 transition-all text-left"
                   >
-                    {s.name}
+                    <span>{s.name}</span>
+                    {SCENARIO_CASE[s.name] && (
+                      <span className="ml-1 opacity-50 font-normal">({SCENARIO_CASE[s.name]})</span>
+                    )}
                   </button>
                 ))}
               </div>
@@ -835,13 +892,19 @@ export default function App() {
                 <div className={`rounded-xl border p-4 ${scoreColor}`}>
                   <p className="text-xs font-semibold uppercase tracking-wide mb-1 flex items-center">
                     Commercial Opportunity Score
-                    <Tip text="Score is directionally calculated from Net Commercial Impact, Break-even Conversion Uplift, BNPL Adoption, Contribution Margin, and Refund Exposure. It is intended as a decision-support indicator, not a financial guarantee." />
+                    <Tip text="Composite score based on estimated net commercial impact, break-even conversion threshold, adoption assumptions, and contribution margin. Intended as a directional decision-support indicator." />
                   </p>
                   <div className="flex items-end gap-2">
                     <p className="text-xl font-bold">{opportunityScore}<span className="text-sm font-semibold opacity-60"> / 100</span></p>
                   </div>
                   <p className="text-xs mt-0.5 font-semibold">{scoreLabel}</p>
-                  <p className="text-[10px] mt-0.5 opacity-60">Based on net impact, break-even, adoption & margin</p>
+                  <ScoreDrivers
+                    nciScore={Math.min(40, Math.max(0, (results.netCommercialImpact / 200000) * 40))}
+                    beuScore={breakEvenConversionUplift <= 0 ? 30 : breakEvenConversionUplift > inputs.conversionUpliftPercent ? 0 : Math.min(30, (1 - breakEvenConversionUplift / inputs.conversionUpliftPercent) * 30)}
+                    adoptionScore={Math.min(15, (inputs.bnplAdoptionPercent / 25) * 15)}
+                    marginScore={Math.min(15, (inputs.contributionMarginPercent / 80) * 15)}
+                    colorClass={scoreColor}
+                  />
                 </div>
               </div>
             );

@@ -2,6 +2,14 @@ import { useState, useMemo } from 'react';
 import { ChevronDown, ChevronUp, Award, TrendingUp, TrendingDown, Minus } from 'lucide-react';
 import type { AppConfig, CalcInputs, FeeRow, ScenarioPreset } from './types';
 
+// ─── Scenario case label map ─────────────────────────────────────────────────
+
+const SCENARIO_CASE: Record<string, string> = {
+  Conservative: 'Low Case',
+  Moderate: 'Base Case',
+  Aggressive: 'High Case',
+};
+
 // ─── Shared helpers (duplicated from App to keep this file self-contained) ────
 
 const fmt = (n: number, type: 'currency' | 'percent' | 'number' = 'currency') => {
@@ -183,7 +191,12 @@ export function ScenarioComparison({ inputs, feeRow, activeScenarios }: Scenario
                   <td className="px-4 py-3 font-semibold text-gray-800 whitespace-nowrap">
                     <div className="flex items-center gap-1.5">
                       {isBest && <Award size={12} className="text-emerald-600 flex-shrink-0" />}
-                      {row.scenario.name}
+                      <span>
+                        {row.scenario.name}
+                        {SCENARIO_CASE[row.scenario.name] && (
+                          <span className="ml-1 text-gray-400 font-normal text-[10px]">({SCENARIO_CASE[row.scenario.name]})</span>
+                        )}
+                      </span>
                       {isBest && <span className="ml-1 px-1.5 py-0.5 text-[10px] font-bold bg-emerald-100 text-emerald-700 rounded-full">Best</span>}
                       {isWorst && <span className="ml-1 px-1.5 py-0.5 text-[10px] font-bold bg-red-100 text-red-600 rounded-full">Worst</span>}
                     </div>
@@ -218,7 +231,12 @@ export function ScenarioComparison({ inputs, feeRow, activeScenarios }: Scenario
                 <TrendingUp size={13} className="text-emerald-600 flex-shrink-0" />
                 <span className="text-xs font-bold uppercase tracking-wide text-emerald-700">Best Scenario</span>
               </div>
-              <p className="text-sm font-bold text-emerald-800">{best.scenario.name}</p>
+              <p className="text-sm font-bold text-emerald-800">
+                {best.scenario.name}
+                {SCENARIO_CASE[best.scenario.name] && (
+                  <span className="ml-1.5 text-emerald-600 font-normal text-xs">({SCENARIO_CASE[best.scenario.name]})</span>
+                )}
+              </p>
               <p className="text-xs text-emerald-700 mt-0.5">
                 Net Impact:{' '}
                 <strong>{bestPositive ? '+' : ''}{fmt(best.netCommercialImpact)}</strong>
@@ -232,7 +250,12 @@ export function ScenarioComparison({ inputs, feeRow, activeScenarios }: Scenario
                 <TrendingDown size={13} className="text-red-500 flex-shrink-0" />
                 <span className="text-xs font-bold uppercase tracking-wide text-red-600">Worst Scenario</span>
               </div>
-              <p className="text-sm font-bold text-red-800">{worst.scenario.name}</p>
+              <p className="text-sm font-bold text-red-800">
+                {worst.scenario.name}
+                {SCENARIO_CASE[worst.scenario.name] && (
+                  <span className="ml-1.5 text-red-500 font-normal text-xs">({SCENARIO_CASE[worst.scenario.name]})</span>
+                )}
+              </p>
               <p className="text-xs text-red-700 mt-0.5">
                 Net Impact:{' '}
                 <strong>{worstPositive ? '+' : ''}{fmt(worst.netCommercialImpact)}</strong>
@@ -351,14 +374,15 @@ export function ProviderComparison({ inputs, activeRows }: ProviderComparisonPro
         </table>
       </div>
       {bestIdx >= 0 && (
-        <div className="flex items-center gap-2 text-xs bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-2.5">
-          <Award size={13} className="text-emerald-600 flex-shrink-0" />
+        <div className="flex items-start gap-2 text-xs bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-2.5">
+          <Award size={13} className="text-emerald-600 flex-shrink-0 mt-0.5" />
           <span>
             <strong className="text-gray-800">Recommended provider under current assumptions:</strong>{' '}
             <strong className="text-emerald-700">{rows[bestIdx].feeRow.provider}</strong>
             {' '}—{' '}Net Commercial Impact of{' '}
             <strong className="text-emerald-700">{fmt(rows[bestIdx].netCommercialImpact)}</strong>
-            {' '}at {rows[bestIdx].feeRow.percentFee}% + {fmtPrecise(rows[bestIdx].feeRow.fixedFee)} per transaction.
+            {' '}at {rows[bestIdx].feeRow.percentFee}% + {fmtPrecise(rows[bestIdx].feeRow.fixedFee)} per transaction.{' '}
+            <span className="text-gray-600">Recommendation is based on highest estimated Net Commercial Impact under current assumptions.</span>
           </span>
         </div>
       )}
@@ -412,8 +436,8 @@ export function EventEconomicsMatrix({ inputs, feeRow }: EventEconomicsMatrixPro
           No active fee configuration for the selected provider/region. Matrix outputs will show $0.
         </div>
       )}
+      <p className="text-sm font-semibold text-gray-700 mb-1">Estimated Net Commercial Impact by Event Price and BNPL Adoption Rate</p>
       <p className="text-xs text-gray-500 leading-relaxed">
-        Net Commercial Impact across registration price points and BNPL adoption rates.
         Uses current provider fee configuration, conversion uplift ({inputs.conversionUpliftPercent}%), contribution margin ({inputs.contributionMarginPercent}%), and standard card rate ({inputs.standardCardFeePercent}%).
         Current inputs are highlighted with a blue border.
       </p>
