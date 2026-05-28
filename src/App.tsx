@@ -803,7 +803,10 @@ export default function App() {
                   </p>
                 </div>
                 <div className={`rounded-xl border p-4 ${scoreColor}`}>
-                  <p className="text-xs font-semibold uppercase tracking-wide mb-1">Commercial Opportunity Score</p>
+                  <p className="text-xs font-semibold uppercase tracking-wide mb-1 flex items-center">
+                    Commercial Opportunity Score
+                    <Tip text="Score is directionally calculated from Net Commercial Impact, Break-even Conversion Uplift, BNPL Adoption, Contribution Margin, and Refund Exposure. It is intended as a decision-support indicator, not a financial guarantee." />
+                  </p>
                   <div className="flex items-end gap-2">
                     <p className="text-xl font-bold">{opportunityScore}<span className="text-sm font-semibold opacity-60"> / 100</span></p>
                   </div>

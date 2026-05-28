@@ -128,10 +128,12 @@ export function ScenarioComparison({ inputs, feeRow, activeScenarios }: Scenario
 
   const bestIdx = useMemo(() => {
     if (rows.length === 0) return -1;
-    let max = -Infinity;
-    let idx = 0;
-    rows.forEach((r, i) => { if (r.netCommercialImpact > max) { max = r.netCommercialImpact; idx = i; } });
-    return idx;
+    return rows.reduce((best, r, i) => r.netCommercialImpact > rows[best].netCommercialImpact ? i : best, 0);
+  }, [rows]);
+
+  const worstIdx = useMemo(() => {
+    if (rows.length === 0) return -1;
+    return rows.reduce((worst, r, i) => r.netCommercialImpact < rows[worst].netCommercialImpact ? i : worst, 0);
   }, [rows]);
 
   if (activeScenarios.length === 0) {
@@ -175,13 +177,15 @@ export function ScenarioComparison({ inputs, feeRow, activeScenarios }: Scenario
           <tbody className="divide-y divide-gray-100">
             {rows.map((row, i) => {
               const isBest = i === bestIdx;
+              const isWorst = i === worstIdx && rows.length > 1;
               return (
-                <tr key={row.scenario.id} className={isBest ? 'bg-emerald-50' : 'bg-white hover:bg-gray-50'}>
+                <tr key={row.scenario.id} className={isBest ? 'bg-emerald-50' : isWorst ? 'bg-red-50' : 'bg-white hover:bg-gray-50'}>
                   <td className="px-4 py-3 font-semibold text-gray-800 whitespace-nowrap">
                     <div className="flex items-center gap-1.5">
                       {isBest && <Award size={12} className="text-emerald-600 flex-shrink-0" />}
                       {row.scenario.name}
                       {isBest && <span className="ml-1 px-1.5 py-0.5 text-[10px] font-bold bg-emerald-100 text-emerald-700 rounded-full">Best</span>}
+                      {isWorst && <span className="ml-1 px-1.5 py-0.5 text-[10px] font-bold bg-red-100 text-red-600 rounded-full">Worst</span>}
                     </div>
                   </td>
                   <td className="px-4 py-3 text-gray-700">{row.scenario.bnplAdoptionPercent}%</td>
@@ -204,7 +208,6 @@ export function ScenarioComparison({ inputs, feeRow, activeScenarios }: Scenario
       </div>
       {rows.length >= 2 && (() => {
         const best = rows[bestIdx];
-        const worstIdx = rows.length - 1;
         const worst = rows[worstIdx];
         const bestPositive = best.netCommercialImpact >= 0;
         const worstPositive = worst.netCommercialImpact >= 0;
@@ -266,7 +269,7 @@ export function ProviderComparison({ inputs, activeRows }: ProviderComparisonPro
   }, [regionRows, inputs]);
 
   const bestIdx = rows.length > 0 ? 0 : -1; // already sorted desc by NCI
-  const worstNci = rows.length > 0 ? rows[rows.length - 1].netCommercialImpact : 0;
+  const bestNci = rows.length > 0 ? rows[0].netCommercialImpact : 0;
 
   if (regionRows.length === 0) {
     return (
@@ -286,7 +289,7 @@ export function ProviderComparison({ inputs, activeRows }: ProviderComparisonPro
                 'Provider', 'Fee %', 'Fixed Fee', 'Currency',
                 'Intl Fee?', 'Intl Fee %',
                 'BNPL Processing Cost', 'Incr. Processing Cost', 'Net Commercial Impact',
-                'Savings vs Highest Cost',
+                'Difference vs Best',
               ].map(h => (
                 <th key={h} className="px-4 py-2.5 text-left text-gray-500 font-semibold uppercase tracking-wide whitespace-nowrap">
                   {h}
@@ -332,10 +335,12 @@ export function ProviderComparison({ inputs, activeRows }: ProviderComparisonPro
                       {nci >= 0 ? '+' : ''}{fmt(nci)}
                     </span>
                   </td>
-                  <td className="px-4 py-3">
-                    {rows.length > 1 ? (
-                      <span className={`font-semibold ${nci - worstNci > 0 ? 'text-emerald-600' : 'text-gray-400'}`}>
-                        {nci - worstNci > 0 ? `+${fmt(nci - worstNci)}` : '—'}
+                  <td className="px-4 py-3 whitespace-nowrap">
+                    {isBest ? (
+                      <span className="inline-block px-2 py-0.5 text-[10px] font-bold bg-emerald-100 text-emerald-700 rounded-full">Best</span>
+                    ) : rows.length > 1 ? (
+                      <span className="font-semibold text-red-600">
+                        {fmt(nci - bestNci)}
                       </span>
                     ) : <span className="text-gray-400">—</span>}
                   </td>
