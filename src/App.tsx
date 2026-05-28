@@ -4,7 +4,7 @@ import {
   Cell, PieChart, Pie
 } from 'recharts';
 import {
-  Info, Copy, Download, ChevronDown, TrendingUp, TrendingDown, Minus, Ban,
+  Info, Copy, Download, ChevronDown, TrendingUp, TrendingDown, Minus, Ban, Lightbulb,
 } from 'lucide-react';
 
 import type { AppConfig, CalcInputs, FeeRow } from './types';
@@ -62,16 +62,52 @@ const inputDisabledCls = "w-full px-3 py-2 text-sm bg-gray-100 border border-gra
 
 // ─── Metric Card ─────────────────────────────────────────────────────────────
 
-function MetricCard({ label, value, sub, color = 'default', tip }: {
-  label: string; value: string; sub?: string; color?: 'green' | 'red' | 'blue' | 'orange' | 'default'; tip?: string;
+type CardColor = 'green' | 'red' | 'blue' | 'orange' | 'default';
+
+interface FormulaDetail {
+  formula: string;
+  inputs: string;
+  result: string;
+}
+
+function MetricCard({ label, value, sub, color = 'default', tip, formula }: {
+  label: string; value: string; sub?: string; color?: CardColor; tip?: string; formula?: FormulaDetail;
 }) {
-  const colors = { green: 'bg-emerald-50 border-emerald-200', red: 'bg-red-50 border-red-200', blue: 'bg-blue-50 border-blue-200', orange: 'bg-amber-50 border-amber-200', default: 'bg-white border-gray-200' };
-  const valueColors = { green: 'text-emerald-700', red: 'text-red-700', blue: 'text-blue-700', orange: 'text-amber-700', default: 'text-gray-900' };
+  const [showFormula, setShowFormula] = useState(false);
+  const colors: Record<CardColor, string> = { green: 'bg-emerald-50 border-emerald-200', red: 'bg-red-50 border-red-200', blue: 'bg-blue-50 border-blue-200', orange: 'bg-amber-50 border-amber-200', default: 'bg-white border-gray-200' };
+  const valueColors: Record<CardColor, string> = { green: 'text-emerald-700', red: 'text-red-700', blue: 'text-blue-700', orange: 'text-amber-700', default: 'text-gray-900' };
   return (
-    <div className={`rounded-xl border p-4 ${colors[color]}`}>
-      <div className="flex items-start justify-between">
+    <div className={`rounded-xl border p-4 ${colors[color]} relative`}>
+      <div className="flex items-start justify-between gap-1">
         <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide leading-tight">{label}</p>
-        {tip && <Tip text={tip} />}
+        <div className="flex items-center gap-1 flex-shrink-0">
+          {formula && (
+            <span
+              className="relative inline-flex ml-0.5 cursor-pointer"
+              onMouseEnter={() => setShowFormula(true)}
+              onMouseLeave={() => setShowFormula(false)}
+            >
+              <Info size={13} className="text-gray-400 hover:text-blue-500 transition-colors mt-0.5" />
+              {showFormula && (
+                <span className="absolute z-50 right-0 top-5 w-72 bg-gray-900 text-white text-xs rounded-lg p-3 shadow-xl leading-relaxed space-y-1.5">
+                  <div>
+                    <span className="text-gray-400 uppercase tracking-wide text-[10px] font-semibold">Formula</span>
+                    <div className="font-mono text-blue-300 mt-0.5">{formula.formula}</div>
+                  </div>
+                  <div>
+                    <span className="text-gray-400 uppercase tracking-wide text-[10px] font-semibold">Inputs Used</span>
+                    <div className="text-gray-200 mt-0.5">{formula.inputs}</div>
+                  </div>
+                  <div>
+                    <span className="text-gray-400 uppercase tracking-wide text-[10px] font-semibold">Result</span>
+                    <div className="text-emerald-300 font-semibold mt-0.5">{formula.result}</div>
+                  </div>
+                </span>
+              )}
+            </span>
+          )}
+          {tip && !formula && <Tip text={tip} />}
+        </div>
       </div>
       <p className={`text-xl font-bold mt-1.5 ${valueColors[color]}`}>{value}</p>
       {sub && <p className="text-xs text-gray-500 mt-0.5">{sub}</p>}
@@ -285,33 +321,46 @@ export default function App() {
     'Shared absorption': 'IRONMAN and athlete each bear 50% of BNPL fee',
   };
 
-  // Copy executive summary
-  const copyExecSummary = () => {
-    const usedScenario = activeScenarios.find(s =>
+  const usedScenario = useMemo(() =>
+    activeScenarios.find(s =>
       s.bnplAdoptionPercent === inputs.bnplAdoptionPercent &&
       s.conversionUpliftPercent === inputs.conversionUpliftPercent &&
       s.refundRatePercent === inputs.refundRatePercent
-    );
+    ), [activeScenarios, inputs.bnplAdoptionPercent, inputs.conversionUpliftPercent, inputs.refundRatePercent]);
+
+  // Copy executive summary
+  const copyExecSummary = () => {
+    const ts = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' });
     const lines = [
       `BNPL Cost & Conversion Calculator — Executive Summary`,
-      `Generated: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}`,
+      `Generated: ${ts}`,
       ``,
-      `Selected Configuration`,
-      `  Provider: ${inputs.provider} | Region: ${inputs.country} | Event Type: ${inputs.eventType}`,
-      feeRow
-        ? `  Fee Rate: ${feeRow.percentFee}% + ${fmtPrecise(feeRow.fixedFee)} per txn (${feeRow.currency})`
-        : `  Fee Rate: No active rate configured`,
-      feeRow
-        ? `  Intl Fee Applicable: ${feeRow.intlFeeApplicable ? `Yes (${feeRow.intlFeePercent}%)` : 'No'} | Applied: ${inputs.applyIntlFee && feeRow.intlFeeApplicable ? 'Yes' : 'No'}`
-        : '',
-      feeRow?.notes ? `  Source: ${feeRow.notes}` : '',
-      usedScenario ? `  Scenario Preset Used: ${usedScenario.name}` : '',
+      `Configuration`,
+      `  Name: ${config.metadata.configName} v${config.metadata.version}`,
+      `  Owner: ${config.metadata.owner}`,
+      `  Source: ${config.metadata.source}`,
+      `  Last Updated: ${config.metadata.lastUpdated}`,
+      config.metadata.notes ? `  Notes: ${config.metadata.notes}` : '',
       ``,
-      `Key Assumptions`,
+      `Selected Fee Configuration`,
+      `  Provider: ${inputs.provider}`,
+      `  Region: ${inputs.country}`,
+      `  Event Type: ${inputs.eventType}`,
+      feeRow
+        ? `  Fee %: ${feeRow.percentFee}%`
+        : `  Fee %: No active rate configured`,
+      feeRow ? `  Fixed Fee: ${fmtPrecise(feeRow.fixedFee)}` : '',
+      feeRow ? `  Currency: ${feeRow.currency}` : '',
+      feeRow ? `  International Fee Applicable: ${feeRow.intlFeeApplicable ? 'Yes' : 'No'}` : '',
+      feeRow?.intlFeeApplicable ? `  International Fee %: ${feeRow.intlFeePercent}% (${inputs.applyIntlFee ? 'Applied' : 'Toggled off'})` : '',
+      usedScenario ? `  Scenario Preset: ${usedScenario.name}` : '',
+      ``,
+      `Key Inputs`,
       `  Registration Price: ${fmt(inputs.registrationPrice)} | Expected Registrations: ${fmt(inputs.expectedRegistrations, 'number')}`,
       `  BNPL Adoption: ${inputs.bnplAdoptionPercent}% | Conversion Uplift: ${inputs.conversionUpliftPercent}%`,
       `  Contribution Margin: ${inputs.contributionMarginPercent}% | Fee Absorption: ${inputs.feeAbsorption}`,
       `  Refund Rate: ${inputs.refundRatePercent}% | Avg Refund: ${inputs.avgRefundAmountPercent}%`,
+      `  Standard Card Fee: ${inputs.standardCardFeePercent}% + ${fmtPrecise(inputs.standardCardFixedFee)}`,
       ``,
       `Key Outputs`,
       `  Gross Revenue: ${fmt(results.grossRevenue)}`,
@@ -328,12 +377,12 @@ export default function App() {
       `  Net Commercial Impact: ${fmt(results.netCommercialImpact)}`,
       `  Break-even Conversion Uplift: ${fmt(results.breakEvenConversionUplift, 'percent')}`,
       ``,
-      `Recommendation`,
+      `Commercial Recommendation`,
       `  ${recText}`,
       rateUnavailable ? '' : `  ${eventRec[inputs.eventType] ?? ''}`,
       ``,
-      `Note: Rates and assumptions are based on user-configured inputs and should be validated before production use.`,
-    ].filter(l => l !== undefined);
+      `Rates and assumptions are user-configured and should be validated before business decision-making.`,
+    ].filter(l => l !== '');
     navigator.clipboard.writeText(lines.join('\n'));
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -341,14 +390,17 @@ export default function App() {
 
   // Export CSV
   const exportCsv = () => {
-    const usedScenario = activeScenarios.find(s =>
-      s.bnplAdoptionPercent === inputs.bnplAdoptionPercent &&
-      s.conversionUpliftPercent === inputs.conversionUpliftPercent &&
-      s.refundRatePercent === inputs.refundRatePercent
-    );
     const rows: (string | number)[][] = [
       ['BNPL Cost & Conversion Calculator — Export'],
       ['Generated', new Date().toISOString()],
+      [''],
+      ['CONFIGURATION METADATA'],
+      ['Configuration Name', config.metadata.configName],
+      ['Version', config.metadata.version],
+      ['Owner', config.metadata.owner],
+      ['Source', config.metadata.source],
+      ['Last Updated', config.metadata.lastUpdated],
+      ['Notes', config.metadata.notes],
       [''],
       ['INPUTS'],
       ['Country / Region', inputs.country],
@@ -415,14 +467,18 @@ export default function App() {
       <header className="bg-white border-b border-gray-200 sticky top-0 z-40">
         <div className="max-w-screen-2xl mx-auto px-6 py-4 flex items-center justify-between">
           <div>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 flex-wrap">
               <h1 className="text-lg font-bold text-gray-900 tracking-tight">BNPL Cost & Conversion Calculator</h1>
+              <span className="px-2 py-0.5 text-xs font-medium bg-blue-50 text-blue-700 rounded-full border border-blue-200 whitespace-nowrap">
+                {config.metadata.configName} v{config.metadata.version}
+              </span>
               <span className="px-2 py-0.5 text-xs font-medium bg-gray-100 text-gray-500 rounded-full border border-gray-200 whitespace-nowrap">
-                Last Updated: May 2026 Stripe Amendment
+                Last Updated: {config.metadata.lastUpdated}
               </span>
             </div>
             <p className="text-xs text-gray-500 mt-0.5">
-              Evaluate payment cost, adoption, conversion uplift, and net commercial impact by event and market.
+              {config.metadata.owner && <span className="font-medium text-gray-600">{config.metadata.owner} · </span>}
+              {config.metadata.source}
             </p>
           </div>
           <div className="flex items-center gap-3">
@@ -742,13 +798,55 @@ export default function App() {
             <div className={`rounded-2xl border p-5 ${recColor}`}>
               <div className="flex items-start gap-3">
                 <RecIcon size={18} className="flex-shrink-0 mt-0.5" />
-                <div>
+                <div className="flex-1">
                   <p className="text-sm font-semibold mb-1">Commercial Assessment</p>
                   <p className="text-sm leading-relaxed">{recText}</p>
                   <p className="text-xs mt-2 opacity-80 font-medium">{eventRec[inputs.eventType]}</p>
                   <p className="text-xs mt-1.5 opacity-55 italic">
                     Directional model based on current Stripe contracted pricing and assumed athlete behavior.
                   </p>
+
+                  {/* Executive Insights */}
+                  <div className="mt-4 pt-3 border-t border-current/20">
+                    <div className="flex items-center gap-1.5 mb-2">
+                      <Lightbulb size={13} className="opacity-70" />
+                      <span className="text-xs font-bold uppercase tracking-wide opacity-70">Executive Insights</span>
+                    </div>
+                    <ul className="space-y-1.5">
+                      {[
+                        breakEvenConversionUplift < 1
+                          ? `Break-even conversion uplift is only ${fmt(breakEvenConversionUplift, 'percent')} — a very small improvement in athlete conversion is enough to offset the incremental BNPL cost.`
+                          : breakEvenConversionUplift < inputs.conversionUpliftPercent
+                            ? `Break-even uplift (${fmt(breakEvenConversionUplift, 'percent')}) is below your assumed ${inputs.conversionUpliftPercent}% — the model is currently on the favorable side of neutral.`
+                            : `Break-even uplift (${fmt(breakEvenConversionUplift, 'percent')}) exceeds your assumed ${inputs.conversionUpliftPercent}% — conversion performance will need to exceed the model assumption to reach positive net impact.`,
+
+                        inputs.registrationPrice >= 500
+                          ? `High registration price (${fmt(inputs.registrationPrice)}) improves BNPL economics — the fixed per-transaction fee is a smaller proportion of total cost at this price point.`
+                          : `Lower registration price (${fmt(inputs.registrationPrice)}) makes the fixed per-transaction fee a larger relative cost — monitor closely at high adoption rates.`,
+
+                        results.incrementalProcessingCost / results.grossRevenue < 0.01 && results.grossRevenue > 0
+                          ? `Incremental processing cost (${fmt(results.incrementalProcessingCost)}) is less than 1% of gross registration revenue — a manageable cost relative to total event scale.`
+                          : `Incremental processing cost (${fmt(results.incrementalProcessingCost)}) represents ${fmt((results.incrementalProcessingCost / results.grossRevenue) * 100, 'percent')} of gross registration revenue.`,
+
+                        results.refundExposure > 0
+                          ? `Refund exposure pool is ${fmt(results.refundExposure)} — operational processes for BNPL refund handling should be confirmed before launch.`
+                          : null,
+
+                        feeRow?.intlFeeApplicable && inputs.applyIntlFee
+                          ? `The ${feeRow.intlFeePercent}% international payment methods fee adds ${fmt(results.intlFeeAmount)} to total BNPL cost. Confirm applicability with Stripe before production use.`
+                          : null,
+
+                        netCommercialImpact > 0
+                          ? `Under current assumptions, BNPL is directionally favorable — net commercial impact is ${fmt(netCommercialImpact)} positive.`
+                          : `Under current assumptions, BNPL shows a net cost of ${fmt(Math.abs(netCommercialImpact))}. Review adoption assumptions or consider the athlete surcharge model.`,
+                      ].filter(Boolean).slice(0, 5).map((insight, i) => (
+                        <li key={i} className="flex items-start gap-2 text-xs leading-relaxed opacity-85">
+                          <span className="w-1 h-1 rounded-full bg-current mt-1.5 flex-shrink-0 opacity-60" />
+                          {insight}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
                 </div>
               </div>
             </div>
@@ -762,27 +860,43 @@ export default function App() {
                 label="Gross Registration Revenue"
                 value={fmt(results.grossRevenue)}
                 sub={`${fmt(inputs.expectedRegistrations, 'number')} registrations`}
-                tip="Total revenue from all registrations"
+                formula={{
+                  formula: 'Price × Registrations',
+                  inputs: `${fmt(inputs.registrationPrice)} × ${fmt(inputs.expectedRegistrations, 'number')}`,
+                  result: fmt(results.grossRevenue),
+                }}
               />
               <MetricCard
                 label="Estimated BNPL Volume"
                 value={fmt(results.bnplVolume)}
                 sub={`${fmt(results.bnplTransactions, 'number')} transactions`}
                 color="blue"
-                tip="Portion of registrations expected to pay via BNPL"
+                formula={{
+                  formula: 'Registrations × Adoption% × Price',
+                  inputs: `${fmt(inputs.expectedRegistrations, 'number')} × ${inputs.bnplAdoptionPercent}% × ${fmt(inputs.registrationPrice)}`,
+                  result: fmt(results.bnplVolume),
+                }}
               />
               <MetricCard
                 label="Incremental Registrations"
                 value={fmt(results.incrementalRegistrations, 'number')}
                 sub={`+${inputs.conversionUpliftPercent}% uplift`}
                 color="green"
-                tip="Additional registrations attributable to BNPL conversion uplift"
+                formula={{
+                  formula: 'Registrations × Conversion Uplift%',
+                  inputs: `${fmt(inputs.expectedRegistrations, 'number')} × ${inputs.conversionUpliftPercent}%`,
+                  result: `${fmt(results.incrementalRegistrations, 'number')} registrations`,
+                }}
               />
               <MetricCard
                 label="Incremental Revenue from Uplift"
                 value={fmt(results.incrementalRevenue)}
                 color="green"
-                tip="Full revenue from additional registrations driven by BNPL"
+                formula={{
+                  formula: 'Incremental Registrations × Price',
+                  inputs: `${fmt(results.incrementalRegistrations, 'number')} × ${fmt(inputs.registrationPrice)}`,
+                  result: fmt(results.incrementalRevenue),
+                }}
               />
             </div>
           </div>
@@ -794,14 +908,24 @@ export default function App() {
               <MetricCard
                 label="Standard Card Cost on BNPL Volume"
                 value={fmt(results.stdCardCostOnBnpl)}
-                tip="Baseline: what card processing would cost on the same BNPL volume"
+                formula={{
+                  formula: '(BNPL Volume × Card%) + (BNPL Txns × Card Fixed)',
+                  inputs: `(${fmt(results.bnplVolume)} × ${inputs.standardCardFeePercent}%) + (${fmt(results.bnplTransactions, 'number')} × ${fmtPrecise(inputs.standardCardFixedFee)})`,
+                  result: fmt(results.stdCardCostOnBnpl),
+                }}
               />
               <MetricCard
                 label="BNPL Base Processing Cost"
                 value={fmt(results.bnplBaseCost)}
                 color="orange"
                 sub={feeRow ? `${feeRow.percentFee}% + ${fmtPrecise(feeRow.fixedFee)} per txn` : ''}
-                tip="Processing cost from the selected fee row (percent + fixed), before international fee"
+                formula={{
+                  formula: '(BNPL Volume × BNPL%) + (BNPL Txns × BNPL Fixed)',
+                  inputs: feeRow
+                    ? `(${fmt(results.bnplVolume)} × ${feeRow.percentFee}%) + (${fmt(results.bnplTransactions, 'number')} × ${fmtPrecise(feeRow.fixedFee)})`
+                    : 'No active rate configured',
+                  result: fmt(results.bnplBaseCost),
+                }}
               />
               <MetricCard
                 label="International Payment Methods Fee"
@@ -809,18 +933,28 @@ export default function App() {
                 color={results.intlFeeAmount > 0 ? 'orange' : 'default'}
                 sub={
                   feeRow?.intlFeeApplicable
-                    ? inputs.applyIntlFee
-                      ? `${feeRow.intlFeePercent}% applied`
-                      : 'Applicable but toggled off'
+                    ? inputs.applyIntlFee ? `${feeRow.intlFeePercent}% applied` : 'Applicable but toggled off'
                     : 'Not applicable for this provider/region'
                 }
-                tip="International payment methods fee based on the selected fee row configuration. Toggle on/off in the rate card."
+                formula={{
+                  formula: feeRow?.intlFeeApplicable && inputs.applyIntlFee
+                    ? 'BNPL Volume × Intl Fee%'
+                    : 'Not applied (fee not applicable or toggled off)',
+                  inputs: feeRow?.intlFeeApplicable && inputs.applyIntlFee
+                    ? `${fmt(results.bnplVolume)} × ${feeRow!.intlFeePercent}%`
+                    : 'N/A',
+                  result: fmt(results.intlFeeAmount),
+                }}
               />
               <MetricCard
                 label="Estimated Refund Exposure"
                 value={fmt(results.refundExposure)}
                 color="orange"
-                tip="Indicative refund exposure based on refund rate and average refund amount on BNPL volume"
+                formula={{
+                  formula: 'BNPL Volume × Refund Rate% × Avg Refund%',
+                  inputs: `${fmt(results.bnplVolume)} × ${inputs.refundRatePercent}% × ${inputs.avgRefundAmountPercent}%`,
+                  result: fmt(results.refundExposure),
+                }}
               />
             </div>
           </div>
@@ -834,21 +968,41 @@ export default function App() {
                 value={fmt(results.bnplProcessingCost)}
                 color="orange"
                 sub="Base + International fee"
-                tip="Total gross BNPL cost: base processing + international fee (if applied)"
+                formula={{
+                  formula: 'BNPL Base Cost + International Fee',
+                  inputs: `${fmt(results.bnplBaseCost)} + ${fmt(results.intlFeeAmount)}`,
+                  result: fmt(results.bnplProcessingCost),
+                }}
               />
               <MetricCard
                 label="Estimated BNPL Processing Cost to IRONMAN"
                 value={fmt(results.ironmanCost)}
                 color={isShared || isSurcharge ? 'blue' : 'orange'}
                 sub={absorptionLabel[inputs.feeAbsorption]}
-                tip="BNPL cost after applying fee absorption strategy — what IRONMAN actually bears"
+                formula={{
+                  formula: isSurcharge
+                    ? 'max(0, BNPL Gross Cost − Surcharge Revenue)'
+                    : isShared
+                      ? 'BNPL Gross Cost × 50%'
+                      : 'BNPL Gross Cost (IRONMAN absorbs 100%)',
+                  inputs: isSurcharge
+                    ? `max(0, ${fmt(results.bnplProcessingCost)} − ${fmt(results.athleteTotalCost)})`
+                    : isShared
+                      ? `${fmt(results.bnplProcessingCost)} × 50%`
+                      : fmt(results.bnplProcessingCost),
+                  result: fmt(results.ironmanCost),
+                }}
               />
               <MetricCard
                 label="Incremental Processing Cost"
                 value={results.incrementalProcessingCost >= 0 ? `+${fmt(results.incrementalProcessingCost)}` : fmt(results.incrementalProcessingCost)}
                 color={results.incrementalProcessingCost > 0 ? 'red' : 'green'}
                 sub="IRONMAN net cost vs. standard card baseline"
-                tip="IRONMAN net BNPL cost minus what standard card would have cost on the same volume"
+                formula={{
+                  formula: 'IRONMAN BNPL Cost − Standard Card Cost on BNPL Volume',
+                  inputs: `${fmt(results.ironmanCost)} − ${fmt(results.stdCardCostOnBnpl)}`,
+                  result: fmt(results.incrementalProcessingCost),
+                }}
               />
             </div>
           </div>
@@ -862,23 +1016,35 @@ export default function App() {
                 value={fmt(results.incrementalContribution)}
                 color="green"
                 sub={`${inputs.contributionMarginPercent}% of incremental revenue`}
-                tip="Incremental Revenue × Contribution Margin % — margin-adjusted value of new registrations"
+                formula={{
+                  formula: 'Incremental Revenue × Contribution Margin%',
+                  inputs: `${fmt(results.incrementalRevenue)} × ${inputs.contributionMarginPercent}%`,
+                  result: fmt(results.incrementalContribution),
+                }}
               />
               <MetricCard
                 label="Estimated Net Commercial Impact"
                 value={results.netCommercialImpact >= 0 ? `+${fmt(results.netCommercialImpact)}` : fmt(results.netCommercialImpact)}
                 color={netColor}
                 sub="Incremental Contribution − Incremental Processing Cost"
-                tip="Net impact: margin-adjusted uplift revenue minus the incremental cost IRONMAN bears"
+                formula={{
+                  formula: 'Incremental Contribution − Incremental Processing Cost',
+                  inputs: `${fmt(results.incrementalContribution)} − ${fmt(results.incrementalProcessingCost)}`,
+                  result: fmt(results.netCommercialImpact),
+                }}
               />
               <MetricCard
                 label="Break-even Conversion Uplift"
                 value={fmt(results.breakEvenConversionUplift, 'percent')}
                 color={results.breakEvenConversionUplift < inputs.conversionUpliftPercent ? 'green' : 'red'}
                 sub={`You entered ${inputs.conversionUpliftPercent}% uplift`}
-                tip="Minimum conversion uplift (at this margin) required for BNPL to be contribution-neutral"
+                formula={{
+                  formula: '(Incr. Processing Cost ÷ (Gross Revenue × Margin%)) × 100',
+                  inputs: `(${fmt(results.incrementalProcessingCost)} ÷ (${fmt(results.grossRevenue)} × ${inputs.contributionMarginPercent}%)) × 100`,
+                  result: fmt(results.breakEvenConversionUplift, 'percent'),
+                }}
               />
-              <div /> {/* spacer */}
+              <div />
             </div>
           </div>
 

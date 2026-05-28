@@ -1,5 +1,14 @@
 export type FeeAbsorption = 'IRONMAN absorbs BNPL cost' | 'Athlete surcharge' | 'Shared absorption';
 
+export interface ConfigMetadata {
+  configName: string;
+  version: string;
+  owner: string;
+  source: string;
+  lastUpdated: string;
+  notes: string;
+}
+
 export interface FeeRow {
   id: string;
   provider: string;
@@ -43,6 +52,7 @@ export interface AppConfig {
   feeTable: FeeRow[];
   scenarios: ScenarioPreset[];
   defaults: DefaultModelInputs;
+  metadata: ConfigMetadata;
 }
 
 export interface CalcInputs {

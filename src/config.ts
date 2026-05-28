@@ -1,4 +1,4 @@
-import type { AppConfig, FeeRow, ScenarioPreset, DefaultModelInputs } from './types';
+import type { AppConfig, FeeRow, ScenarioPreset, DefaultModelInputs, ConfigMetadata } from './types';
 
 // Starter fee table — prepopulated from May 2026 Stripe Amendment
 // All values are user-editable at runtime
@@ -43,10 +43,20 @@ export const STARTER_DEFAULTS: DefaultModelInputs = {
   athleteSurchargePercent: 1.5,
 };
 
+export const STARTER_METADATA: ConfigMetadata = {
+  configName: 'Stripe BNPL Amendment',
+  version: '1.0',
+  owner: 'Avik Nandi',
+  source: 'Executed Stripe Amendment May 2026',
+  lastUpdated: new Date().toISOString().slice(0, 10),
+  notes: 'Initial BNPL commercial impact model',
+};
+
 export const STARTER_CONFIG: AppConfig = {
   feeTable: STARTER_FEE_TABLE,
   scenarios: STARTER_SCENARIOS,
   defaults: STARTER_DEFAULTS,
+  metadata: STARTER_METADATA,
 };
 
 const STORAGE_KEY = 'bnpl_calc_config_v1';
@@ -55,7 +65,12 @@ const INPUTS_KEY = 'bnpl_calc_inputs_v1';
 export function loadConfig(): AppConfig {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return JSON.parse(raw) as AppConfig;
+    if (raw) {
+      const parsed = JSON.parse(raw) as AppConfig;
+      // Backfill metadata for configs saved before this field was added
+      if (!parsed.metadata) parsed.metadata = structuredClone(STARTER_METADATA);
+      return parsed;
+    }
   } catch { /* ignore */ }
   return structuredClone(STARTER_CONFIG);
 }

@@ -2,7 +2,7 @@ import { useState, useRef } from 'react';
 import {
   Plus, Trash2, Upload, Download, RotateCcw, ChevronDown, ChevronUp, AlertCircle,
 } from 'lucide-react';
-import type { AppConfig, FeeRow, ScenarioPreset, DefaultModelInputs } from './types';
+import type { AppConfig, FeeRow, ScenarioPreset, DefaultModelInputs, ConfigMetadata } from './types';
 import { STARTER_CONFIG, EVENT_TYPES, FEE_ABSORPTIONS, uid } from './config';
 
 // ─── Shared mini input styles ─────────────────────────────────────────────────
@@ -38,6 +38,53 @@ function Section({ title, children, badge }: { title: string; children: React.Re
         {open ? <ChevronUp size={14} className="text-gray-400" /> : <ChevronDown size={14} className="text-gray-400" />}
       </button>
       {open && <div className="p-5">{children}</div>}
+    </div>
+  );
+}
+
+// ─── Metadata Editor ─────────────────────────────────────────────────────────
+
+function MetadataEditor({
+  metadata,
+  onChange,
+}: {
+  metadata: ConfigMetadata;
+  onChange: (m: ConfigMetadata) => void;
+}) {
+  const set = <K extends keyof ConfigMetadata>(key: K, value: string) =>
+    onChange({ ...metadata, [key]: value });
+
+  const inputCls = 'w-full px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900';
+  const LabelEl = ({ children }: { children: React.ReactNode }) => (
+    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{children}</label>
+  );
+
+  return (
+    <div className="grid grid-cols-3 gap-4">
+      <div>
+        <LabelEl>Configuration Name</LabelEl>
+        <input className={inputCls} value={metadata.configName} onChange={e => set('configName', e.target.value)} placeholder="e.g. Stripe BNPL Amendment" />
+      </div>
+      <div>
+        <LabelEl>Version</LabelEl>
+        <input className={inputCls} value={metadata.version} onChange={e => set('version', e.target.value)} placeholder="e.g. 1.0" />
+      </div>
+      <div>
+        <LabelEl>Owner</LabelEl>
+        <input className={inputCls} value={metadata.owner} onChange={e => set('owner', e.target.value)} placeholder="e.g. Avik Nandi" />
+      </div>
+      <div>
+        <LabelEl>Source</LabelEl>
+        <input className={inputCls} value={metadata.source} onChange={e => set('source', e.target.value)} placeholder="e.g. Executed Stripe Amendment May 2026" />
+      </div>
+      <div>
+        <LabelEl>Last Updated</LabelEl>
+        <input type="date" className={inputCls} value={metadata.lastUpdated} onChange={e => set('lastUpdated', e.target.value)} />
+      </div>
+      <div>
+        <LabelEl>Notes</LabelEl>
+        <input className={inputCls} value={metadata.notes} onChange={e => set('notes', e.target.value)} placeholder="e.g. Initial BNPL commercial impact model" />
+      </div>
     </div>
   );
 }
@@ -397,6 +444,14 @@ export default function AdminPanel({ config, onChange, onClearStorage }: AdminPa
             {importSuccess && <span className="text-xs text-emerald-600 font-semibold">Configuration imported successfully.</span>}
             {importError && <span className="text-xs text-red-600 font-semibold">{importError}</span>}
           </div>
+
+          {/* Configuration Metadata */}
+          <Section title="Configuration Metadata">
+            <MetadataEditor
+              metadata={config.metadata}
+              onChange={metadata => onChange({ ...config, metadata })}
+            />
+          </Section>
 
           {/* Provider Fee Table */}
           <Section title="Provider Fee Table" badge={`${config.feeTable.filter(r => r.active).length} active`}>
