@@ -231,15 +231,8 @@ export function ScenarioComparison({ inputs, feeRow, activeScenarios }: Scenario
                 <TrendingUp size={13} className="text-emerald-600 flex-shrink-0" />
                 <span className="text-xs font-bold uppercase tracking-wide text-emerald-700">Best Scenario</span>
               </div>
-              <p className="text-sm font-bold text-emerald-800">
-                {best.scenario.name}
-                {SCENARIO_CASE[best.scenario.name] && (
-                  <span className="ml-1.5 text-emerald-600 font-normal text-xs">({SCENARIO_CASE[best.scenario.name]})</span>
-                )}
-              </p>
-              <p className="text-xs text-emerald-700 mt-0.5">
-                Net Impact:{' '}
-                <strong>{bestPositive ? '+' : ''}{fmt(best.netCommercialImpact)}</strong>
+              <p className="text-sm font-bold text-emerald-700 mt-0.5">
+                {bestPositive ? '+' : ''}{fmt(best.netCommercialImpact)}
               </p>
               <p className="text-xs text-emerald-600 mt-0.5 opacity-80">
                 {best.scenario.bnplAdoptionPercent}% adoption · {best.scenario.conversionUpliftPercent}% uplift
@@ -250,15 +243,8 @@ export function ScenarioComparison({ inputs, feeRow, activeScenarios }: Scenario
                 <TrendingDown size={13} className="text-red-500 flex-shrink-0" />
                 <span className="text-xs font-bold uppercase tracking-wide text-red-600">Worst Scenario</span>
               </div>
-              <p className="text-sm font-bold text-red-800">
-                {worst.scenario.name}
-                {SCENARIO_CASE[worst.scenario.name] && (
-                  <span className="ml-1.5 text-red-500 font-normal text-xs">({SCENARIO_CASE[worst.scenario.name]})</span>
-                )}
-              </p>
-              <p className="text-xs text-red-700 mt-0.5">
-                Net Impact:{' '}
-                <strong>{worstPositive ? '+' : ''}{fmt(worst.netCommercialImpact)}</strong>
+              <p className="text-sm font-bold text-red-700 mt-0.5">
+                {worstPositive ? '+' : ''}{fmt(worst.netCommercialImpact)}
               </p>
               <p className="text-xs text-red-600 mt-0.5 opacity-80">
                 {worst.scenario.bnplAdoptionPercent}% adoption · {worst.scenario.conversionUpliftPercent}% uplift

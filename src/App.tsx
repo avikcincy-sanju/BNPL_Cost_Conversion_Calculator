@@ -895,9 +895,9 @@ export default function App() {
                     <Tip text="Composite score based on estimated net commercial impact, break-even conversion threshold, adoption assumptions, and contribution margin. Intended as a directional decision-support indicator." />
                   </p>
                   <div className="flex items-end gap-2">
-                    <p className="text-xl font-bold">{opportunityScore}<span className="text-sm font-semibold opacity-60"> / 100</span></p>
+                    <p className="text-2xl font-extrabold">{opportunityScore}<span className="text-sm font-semibold opacity-60"> / 100</span></p>
                   </div>
-                  <p className="text-xs mt-0.5 font-semibold">{scoreLabel}</p>
+                  <p className="text-sm font-bold mt-0.5">{scoreLabel}</p>
                   <ScoreDrivers
                     nciScore={Math.min(40, Math.max(0, (results.netCommercialImpact / 200000) * 40))}
                     beuScore={breakEvenConversionUplift <= 0 ? 30 : breakEvenConversionUplift > inputs.conversionUpliftPercent ? 0 : Math.min(30, (1 - breakEvenConversionUplift / inputs.conversionUpliftPercent) * 30)}
