@@ -13,6 +13,7 @@ import {
   EVENT_TYPES, FEE_ABSORPTIONS,
 } from './config';
 import AdminPanel from './AdminPanel';
+import ComparisonViews from './ComparisonViews';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -1169,6 +1170,15 @@ export default function App() {
               <p className="text-xs text-gray-400 mt-2">* Current inputs highlighted. Net impact uses contribution margin ({inputs.contributionMarginPercent}%).</p>
             </div>
           </div>
+
+          {/* Comparison Views */}
+          <ComparisonViews
+            inputs={inputs}
+            feeRow={feeRow}
+            activeScenarios={activeScenarios}
+            activeRows={activeRows}
+            config={config}
+          />
 
           {/* Assumptions */}
           <div className="bg-gray-50 rounded-2xl border border-gray-200 p-5">
