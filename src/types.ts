@@ -1,5 +1,67 @@
 export type FeeAbsorption = 'IRONMAN absorbs BNPL cost' | 'Athlete surcharge' | 'Shared absorption';
 
+// ─── Portfolio Dashboard Types ────────────────────────────────────────────────
+
+export type BrandName = 'IRONMAN' | 'UTMB' | "Rock 'n' Roll" | 'All Brands';
+
+export const BRANDS: BrandName[] = ['IRONMAN', 'UTMB', "Rock 'n' Roll", 'All Brands'];
+
+export type RegionName =
+  | 'United States'
+  | 'Canada'
+  | 'United Kingdom'
+  | 'Australia'
+  | 'New Zealand'
+  | 'Northern Europe'
+  | 'Southern Europe'
+  | 'Central Europe';
+
+export const ALL_REGIONS: RegionName[] = [
+  'United States', 'Canada', 'United Kingdom', 'Australia',
+  'New Zealand', 'Northern Europe', 'Southern Europe', 'Central Europe',
+];
+
+export const EVENT_PORTFOLIO_TYPES = [
+  'IRONMAN Full Distance',
+  'IRONMAN 70.3',
+  'UTMB',
+  "Rock 'n' Roll",
+] as const;
+export type EventPortfolioType = (typeof EVENT_PORTFOLIO_TYPES)[number];
+
+export interface MarketRow {
+  id: string;
+  brand: BrandName;
+  region: RegionName;
+  provider: string;
+  registrations: number;
+  avgEntryFee: number;
+  bnplAdoptionPercent: number;
+  conversionUpliftPercent: number;
+  contributionMarginPercent: number;
+  standardCardFeePercent: number;
+  standardCardFixedFee: number;
+  feeAbsorption: FeeAbsorption;
+  athleteSurchargePercent: number;
+  applyIntlFee: boolean;
+}
+
+export interface EventPortfolioRow {
+  id: string;
+  eventType: EventPortfolioType;
+  region: RegionName;
+  registrations: number;
+  avgTicketPrice: number;
+  bnplAdoptionPercent: number;
+  conversionUpliftPercent: number;
+  contributionMarginPercent: number;
+  standardCardFeePercent: number;
+  standardCardFixedFee: number;
+  feeAbsorption: FeeAbsorption;
+  athleteSurchargePercent: number;
+  applyIntlFee: boolean;
+}
+
 export interface ConfigMetadata {
   configName: string;
   version: string;

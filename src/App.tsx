@@ -5,7 +5,7 @@ import {
 } from 'recharts';
 import {
   Info, Download, ChevronDown, TrendingUp, TrendingDown, Minus, Ban, Lightbulb,
-  ShieldCheck, AlertTriangle, ShieldAlert,
+  ShieldCheck, AlertTriangle, ShieldAlert, LayoutDashboard, Calculator,
 } from 'lucide-react';
 
 import type { AppConfig, CalcInputs, FeeRow } from './types';
@@ -15,6 +15,7 @@ import {
 } from './config';
 import AdminPanel from './AdminPanel';
 import ComparisonViews from './ComparisonViews';
+import PortfolioDashboard from './PortfolioDashboard';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -240,6 +241,7 @@ function ScoreDrivers({
 // ─── Main App ─────────────────────────────────────────────────────────────────
 
 export default function App() {
+  const [activeTab, setActiveTab] = useState<'calculator' | 'portfolio'>('calculator');
   const [config, setConfig] = useState<AppConfig>(() => loadConfig());
 
   // Build inputs from config defaults, then restore from storage
@@ -561,21 +563,57 @@ export default function App() {
       {/* Header */}
       <header className="bg-white border-b border-gray-200 sticky top-0 z-40">
         <div className="max-w-screen-2xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div>
+          <div className="flex items-center gap-6">
             <h1 className="text-lg font-bold text-gray-900 tracking-tight">BNPL Commercial Impact Model</h1>
+            {/* Tab navigation */}
+            <nav className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setActiveTab('calculator')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${
+                  activeTab === 'calculator'
+                    ? 'bg-gray-900 text-white'
+                    : 'text-gray-500 hover:text-gray-800 hover:bg-gray-100'
+                }`}
+              >
+                <Calculator size={12} />
+                Calculator
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab('portfolio')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${
+                  activeTab === 'portfolio'
+                    ? 'bg-gray-900 text-white'
+                    : 'text-gray-500 hover:text-gray-800 hover:bg-gray-100'
+                }`}
+              >
+                <LayoutDashboard size={12} />
+                Portfolio Opportunity Dashboard
+              </button>
+            </nav>
           </div>
           <div className="flex items-center gap-3">
-            <button
-              onClick={exportCsv}
-              className="flex items-center gap-2 px-3 py-2 text-xs font-semibold bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-all"
-            >
-              <Download size={13} />
-              Export CSV
-            </button>
+            {activeTab === 'calculator' && (
+              <button
+                onClick={exportCsv}
+                className="flex items-center gap-2 px-3 py-2 text-xs font-semibold bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-all"
+              >
+                <Download size={13} />
+                Export CSV
+              </button>
+            )}
           </div>
         </div>
       </header>
 
+      {/* Portfolio tab */}
+      {activeTab === 'portfolio' && (
+        <PortfolioDashboard config={config} />
+      )}
+
+      {/* Calculator tab */}
+      {activeTab === 'calculator' && (
       <div className="max-w-screen-2xl mx-auto px-6 py-6 flex gap-6">
 
         {/* ── Left Panel ── */}
@@ -1324,8 +1362,9 @@ export default function App() {
           </div>
         </div>
       </div>
+      )} {/* end calculator tab */}
 
-      {/* Admin Panel */}
+      {/* Admin Panel — available on both tabs */}
       <AdminPanel
         config={config}
         onChange={handleConfigChange}

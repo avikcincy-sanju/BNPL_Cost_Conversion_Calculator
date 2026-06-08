@@ -1,4 +1,4 @@
-import type { AppConfig, FeeRow, ScenarioPreset, DefaultModelInputs, ConfigMetadata } from './types';
+import type { AppConfig, FeeRow, ScenarioPreset, DefaultModelInputs, ConfigMetadata, MarketRow, EventPortfolioRow } from './types';
 
 // Starter fee table — prepopulated from May 2026 Stripe Amendment
 // All values are user-editable at runtime
@@ -104,3 +104,53 @@ export function uid() {
 
 export const EVENT_TYPES = ['IRONMAN Full Distance', 'IRONMAN 70.3', "Rock 'n' Roll Marathon", 'Other'] as const;
 export const FEE_ABSORPTIONS = ['IRONMAN absorbs BNPL cost', 'Athlete surcharge', 'Shared absorption'] as const;
+
+// ─── Portfolio defaults ───────────────────────────────────────────────────────
+
+const PORTFOLIO_MARKETS_KEY = 'bnpl_portfolio_markets_v1';
+const PORTFOLIO_EVENTS_KEY  = 'bnpl_portfolio_events_v1';
+
+export const STARTER_MARKET_ROWS: MarketRow[] = [
+  { id: 'm1', brand: 'IRONMAN',      region: 'United States',    provider: 'Affirm',    registrations: 10000, avgEntryFee: 900,  bnplAdoptionPercent: 12, conversionUpliftPercent: 3, contributionMarginPercent: 60, standardCardFeePercent: 2.70, standardCardFixedFee: 0.30, feeAbsorption: 'IRONMAN absorbs BNPL cost', athleteSurchargePercent: 1.5, applyIntlFee: true },
+  { id: 'm2', brand: 'IRONMAN',      region: 'United Kingdom',   provider: 'Clearpay',  registrations: 5000,  avgEntryFee: 700,  bnplAdoptionPercent: 10, conversionUpliftPercent: 3, contributionMarginPercent: 60, standardCardFeePercent: 2.70, standardCardFixedFee: 0.30, feeAbsorption: 'IRONMAN absorbs BNPL cost', athleteSurchargePercent: 1.5, applyIntlFee: true },
+  { id: 'm3', brand: 'IRONMAN',      region: 'Australia',        provider: 'Afterpay',  registrations: 4000,  avgEntryFee: 800,  bnplAdoptionPercent: 15, conversionUpliftPercent: 4, contributionMarginPercent: 60, standardCardFeePercent: 2.70, standardCardFixedFee: 0.30, feeAbsorption: 'IRONMAN absorbs BNPL cost', athleteSurchargePercent: 1.5, applyIntlFee: true },
+  { id: 'm4', brand: 'IRONMAN',      region: 'Canada',           provider: 'Afterpay',  registrations: 3000,  avgEntryFee: 750,  bnplAdoptionPercent: 10, conversionUpliftPercent: 2, contributionMarginPercent: 60, standardCardFeePercent: 2.70, standardCardFixedFee: 0.30, feeAbsorption: 'IRONMAN absorbs BNPL cost', athleteSurchargePercent: 1.5, applyIntlFee: true },
+  { id: 'm5', brand: 'UTMB',         region: 'Central Europe',   provider: 'Klarna',    registrations: 8000,  avgEntryFee: 300,  bnplAdoptionPercent: 8,  conversionUpliftPercent: 2, contributionMarginPercent: 55, standardCardFeePercent: 2.70, standardCardFixedFee: 0.30, feeAbsorption: 'IRONMAN absorbs BNPL cost', athleteSurchargePercent: 1.5, applyIntlFee: true },
+  { id: 'm6', brand: 'UTMB',         region: 'Northern Europe',  provider: 'Klarna',    registrations: 6000,  avgEntryFee: 350,  bnplAdoptionPercent: 10, conversionUpliftPercent: 3, contributionMarginPercent: 55, standardCardFeePercent: 2.70, standardCardFixedFee: 0.30, feeAbsorption: 'IRONMAN absorbs BNPL cost', athleteSurchargePercent: 1.5, applyIntlFee: true },
+  { id: 'm7', brand: "Rock 'n' Roll", region: 'United States',   provider: 'Affirm',    registrations: 15000, avgEntryFee: 150,  bnplAdoptionPercent: 8,  conversionUpliftPercent: 2, contributionMarginPercent: 50, standardCardFeePercent: 2.70, standardCardFixedFee: 0.30, feeAbsorption: 'IRONMAN absorbs BNPL cost', athleteSurchargePercent: 1.5, applyIntlFee: true },
+  { id: 'm8', brand: "Rock 'n' Roll", region: 'Canada',          provider: 'Afterpay',  registrations: 5000,  avgEntryFee: 130,  bnplAdoptionPercent: 7,  conversionUpliftPercent: 2, contributionMarginPercent: 50, standardCardFeePercent: 2.70, standardCardFixedFee: 0.30, feeAbsorption: 'IRONMAN absorbs BNPL cost', athleteSurchargePercent: 1.5, applyIntlFee: true },
+];
+
+export const STARTER_EVENT_ROWS: EventPortfolioRow[] = [
+  { id: 'e1', eventType: 'IRONMAN Full Distance', region: 'United States',   registrations: 2500,  avgTicketPrice: 900,  bnplAdoptionPercent: 15, conversionUpliftPercent: 4, contributionMarginPercent: 60, standardCardFeePercent: 2.70, standardCardFixedFee: 0.30, feeAbsorption: 'IRONMAN absorbs BNPL cost', athleteSurchargePercent: 1.5, applyIntlFee: true },
+  { id: 'e2', eventType: 'IRONMAN Full Distance', region: 'Australia',       registrations: 1500,  avgTicketPrice: 850,  bnplAdoptionPercent: 15, conversionUpliftPercent: 4, contributionMarginPercent: 60, standardCardFeePercent: 2.70, standardCardFixedFee: 0.30, feeAbsorption: 'IRONMAN absorbs BNPL cost', athleteSurchargePercent: 1.5, applyIntlFee: true },
+  { id: 'e3', eventType: 'IRONMAN 70.3',          region: 'United States',   registrations: 4000,  avgTicketPrice: 450,  bnplAdoptionPercent: 12, conversionUpliftPercent: 3, contributionMarginPercent: 60, standardCardFeePercent: 2.70, standardCardFixedFee: 0.30, feeAbsorption: 'IRONMAN absorbs BNPL cost', athleteSurchargePercent: 1.5, applyIntlFee: true },
+  { id: 'e4', eventType: 'IRONMAN 70.3',          region: 'United Kingdom',  registrations: 2500,  avgTicketPrice: 400,  bnplAdoptionPercent: 10, conversionUpliftPercent: 3, contributionMarginPercent: 60, standardCardFeePercent: 2.70, standardCardFixedFee: 0.30, feeAbsorption: 'IRONMAN absorbs BNPL cost', athleteSurchargePercent: 1.5, applyIntlFee: true },
+  { id: 'e5', eventType: 'UTMB',                  region: 'Central Europe',  registrations: 8000,  avgTicketPrice: 300,  bnplAdoptionPercent: 8,  conversionUpliftPercent: 2, contributionMarginPercent: 55, standardCardFeePercent: 2.70, standardCardFixedFee: 0.30, feeAbsorption: 'IRONMAN absorbs BNPL cost', athleteSurchargePercent: 1.5, applyIntlFee: true },
+  { id: 'e6', eventType: "Rock 'n' Roll",         region: 'United States',   registrations: 12000, avgTicketPrice: 150,  bnplAdoptionPercent: 7,  conversionUpliftPercent: 2, contributionMarginPercent: 50, standardCardFeePercent: 2.70, standardCardFixedFee: 0.30, feeAbsorption: 'IRONMAN absorbs BNPL cost', athleteSurchargePercent: 1.5, applyIntlFee: true },
+  { id: 'e7', eventType: "Rock 'n' Roll",         region: 'Canada',          registrations: 5000,  avgTicketPrice: 130,  bnplAdoptionPercent: 6,  conversionUpliftPercent: 2, contributionMarginPercent: 50, standardCardFeePercent: 2.70, standardCardFixedFee: 0.30, feeAbsorption: 'IRONMAN absorbs BNPL cost', athleteSurchargePercent: 1.5, applyIntlFee: true },
+];
+
+export function loadMarketRows(): MarketRow[] {
+  try {
+    const raw = localStorage.getItem(PORTFOLIO_MARKETS_KEY);
+    if (raw) return JSON.parse(raw) as MarketRow[];
+  } catch { /* ignore */ }
+  return structuredClone(STARTER_MARKET_ROWS);
+}
+
+export function saveMarketRows(rows: MarketRow[]) {
+  try { localStorage.setItem(PORTFOLIO_MARKETS_KEY, JSON.stringify(rows)); } catch { /* ignore */ }
+}
+
+export function loadEventRows(): EventPortfolioRow[] {
+  try {
+    const raw = localStorage.getItem(PORTFOLIO_EVENTS_KEY);
+    if (raw) return JSON.parse(raw) as EventPortfolioRow[];
+  } catch { /* ignore */ }
+  return structuredClone(STARTER_EVENT_ROWS);
+}
+
+export function saveEventRows(rows: EventPortfolioRow[]) {
+  try { localStorage.setItem(PORTFOLIO_EVENTS_KEY, JSON.stringify(rows)); } catch { /* ignore */ }
+}
