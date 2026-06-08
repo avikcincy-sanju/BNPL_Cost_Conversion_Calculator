@@ -1,4 +1,5 @@
-import { useState, useMemo, useEffect, useCallback } from 'react';
+import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   Cell, PieChart, Pie, Legend,
@@ -163,21 +164,247 @@ function paybackBadgeCls(p: string): string {
 
 const CHART_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#84cc16'];
 
-// ─── NEB Tooltip ──────────────────────────────────────────────────────────────
+// ─── Tooltip component (portal-based, clipping-safe) ─────────────────────────
 
-const NEB_TOOLTIP = 'Estimated incremental contribution generated from BNPL adoption and conversion uplift after deducting estimated incremental processing costs.';
+function InfoTooltip({ content }: { content: React.ReactNode }) {
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
 
-function NebInfo() {
+  const show = useCallback(() => {
+    if (btnRef.current) {
+      const r = btnRef.current.getBoundingClientRect();
+      setPos({ top: r.top, left: r.left + r.width / 2 });
+    }
+  }, []);
+  const hide = useCallback(() => setPos(null), []);
+
   return (
-    <span
-      title={NEB_TOOLTIP}
-      className="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full bg-gray-200 text-gray-500 text-[9px] font-bold cursor-help hover:bg-blue-200 hover:text-blue-700 transition-colors flex-shrink-0"
-      aria-label={NEB_TOOLTIP}
-    >
-      i
-    </span>
+    <>
+      <button
+        ref={btnRef}
+        type="button"
+        onMouseEnter={show}
+        onMouseLeave={hide}
+        onFocus={show}
+        onBlur={hide}
+        onClick={e => { e.preventDefault(); e.stopPropagation(); pos ? hide() : show(); }}
+        className="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full bg-gray-200 text-gray-500 text-[9px] font-bold cursor-help hover:bg-blue-500 hover:text-white transition-colors flex-shrink-0 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-1"
+        aria-label="More information"
+        tabIndex={0}
+      >
+        i
+      </button>
+      {pos !== null && createPortal(
+        <div
+          role="tooltip"
+          style={{
+            position: 'fixed',
+            top: pos.top - 10,
+            left: pos.left,
+            transform: 'translate(-50%, -100%)',
+            zIndex: 99999,
+            maxWidth: 320,
+            pointerEvents: 'none',
+          }}
+          className="bg-gray-900 text-white text-[11px] rounded-xl shadow-2xl px-3.5 py-3 leading-relaxed"
+        >
+          {content}
+          <div
+            style={{
+              position: 'absolute',
+              bottom: -4,
+              left: '50%',
+              transform: 'translateX(-50%) rotate(45deg)',
+              width: 8,
+              height: 8,
+              background: '#111827',
+            }}
+          />
+        </div>,
+        document.body,
+      )}
+    </>
   );
 }
+
+// ─── Tooltip content constants ────────────────────────────────────────────────
+
+const TT_NEB = (
+  <div className="space-y-1.5 max-w-[280px]">
+    <p className="font-semibold text-white text-xs">Estimated Net Economic Benefit</p>
+    <p className="text-gray-300">Estimated incremental contribution generated from BNPL adoption and conversion uplift after estimated BNPL processing costs.</p>
+    <div className="bg-gray-800 rounded-lg px-2.5 py-2 mt-1 space-y-0.5">
+      <p className="text-gray-400 text-[10px] font-semibold uppercase tracking-wide mb-1">Formula</p>
+      <p className="text-gray-200">Incremental Revenue × Margin %</p>
+      <p className="text-gray-400 text-[10px]">minus</p>
+      <p className="text-gray-200">Incremental BNPL Processing Cost</p>
+    </div>
+    <p className="text-gray-500 text-[10px] italic">Intended for commercial prioritization only. Does not represent actual realized profit.</p>
+  </div>
+);
+
+const TT_CONFIDENCE = (
+  <div className="space-y-1.5 max-w-[280px]">
+    <p className="font-semibold text-white text-xs">Confidence Level</p>
+    <p className="text-gray-300">Indicates the reliability of the underlying assumptions used within the model.</p>
+    <div className="space-y-2 mt-1">
+      <div>
+        <p className="text-emerald-400 font-semibold text-[10px] uppercase tracking-wide">High</p>
+        <p className="text-gray-300 text-[10px]">Actual provider pricing, actual registration volumes, and proven BNPL market adoption available.</p>
+      </div>
+      <div>
+        <p className="text-amber-400 font-semibold text-[10px] uppercase tracking-wide">Medium</p>
+        <p className="text-gray-300 text-[10px]">Actual volumes available. Partial market data; adoption or uplift assumptions modeled.</p>
+      </div>
+      <div>
+        <p className="text-red-400 font-semibold text-[10px] uppercase tracking-wide">Low</p>
+        <p className="text-gray-300 text-[10px]">Limited market data. Economics rely primarily on modeled assumptions. Requires validation before investment decisions.</p>
+      </div>
+    </div>
+    <p className="text-gray-500 text-[10px] italic">Intended to support rollout prioritization and governance decisions.</p>
+  </div>
+);
+
+const TT_PAYBACK = (
+  <div className="space-y-1.5 max-w-[280px]">
+    <p className="font-semibold text-white text-xs">Payback Period</p>
+    <p className="text-gray-300">Estimates how quickly estimated economic benefit offsets incremental BNPL processing costs.</p>
+    <div className="bg-gray-800 rounded-lg px-2.5 py-2 mt-1 space-y-0.5">
+      <p className="text-gray-400 text-[10px] font-semibold uppercase tracking-wide mb-1">Formula</p>
+      <p className="text-gray-200">Incremental Processing Cost ÷ Est. Net Economic Benefit</p>
+    </div>
+    <div className="space-y-1 mt-1 text-[10px]">
+      <p><span className="text-emerald-400 font-semibold">Immediate</span> — Processing cost is zero or negligible</p>
+      <p><span className="text-blue-400 font-semibold">X Months</span> — Estimated payback within the year</p>
+      <p><span className="text-blue-400 font-semibold">X Years</span> — Extended payback horizon</p>
+      <p><span className="text-amber-400 font-semibold">Needs Validation</span> — Net benefit is zero or negative</p>
+    </div>
+    <p className="text-gray-500 text-[10px] italic">Used for prioritization only. Does not represent actual cash recovery timing.</p>
+  </div>
+);
+
+const TT_WAVE = (
+  <div className="space-y-1.5 max-w-[280px]">
+    <p className="font-semibold text-white text-xs">Wave Classification</p>
+    <p className="text-gray-300">Recommended rollout sequence based on estimated economic benefit and confidence levels.</p>
+    <div className="space-y-2 mt-1">
+      <div>
+        <p className="text-emerald-400 font-semibold text-[10px] uppercase tracking-wide">Wave 1 — Priority Rollout</p>
+        <p className="text-gray-300 text-[10px]">High opportunity (NEB ≥ $50k) and High/Medium confidence.</p>
+      </div>
+      <div>
+        <p className="text-blue-400 font-semibold text-[10px] uppercase tracking-wide">Wave 2 — Selective Pilot</p>
+        <p className="text-gray-300 text-[10px]">Medium opportunity (NEB $25k–$50k) and High/Medium confidence.</p>
+      </div>
+      <div>
+        <p className="text-gray-400 font-semibold text-[10px] uppercase tracking-wide">Wave 3 — Deferred</p>
+        <p className="text-gray-300 text-[10px]">Low opportunity (NEB &lt; $25k) or Low confidence.</p>
+      </div>
+    </div>
+    <p className="text-gray-500 text-[10px] italic">Intended to guide deployment sequencing and pilot planning.</p>
+  </div>
+);
+
+const TT_OPPORTUNITY = (
+  <div className="space-y-1.5 max-w-[260px]">
+    <p className="font-semibold text-white text-xs">Opportunity Level</p>
+    <p className="text-gray-300">Determined by Estimated Net Economic Benefit.</p>
+    <div className="space-y-1.5 mt-1">
+      <div className="flex items-baseline gap-2">
+        <span className="text-emerald-400 font-semibold text-[10px] uppercase tracking-wide whitespace-nowrap">High</span>
+        <span className="text-gray-300 text-[10px]">NEB greater than $50K</span>
+      </div>
+      <div className="flex items-baseline gap-2">
+        <span className="text-amber-400 font-semibold text-[10px] uppercase tracking-wide whitespace-nowrap">Medium</span>
+        <span className="text-gray-300 text-[10px]">NEB $25K–$50K</span>
+      </div>
+      <div className="flex items-baseline gap-2">
+        <span className="text-red-400 font-semibold text-[10px] uppercase tracking-wide whitespace-nowrap">Low</span>
+        <span className="text-gray-300 text-[10px]">NEB less than $25K</span>
+      </div>
+    </div>
+    <p className="text-gray-500 text-[10px] italic">Used to prioritize rollout opportunities across markets.</p>
+  </div>
+);
+
+const TT_REC_PROVIDER_MIX = (
+  <div className="space-y-1.5 max-w-[260px]">
+    <p className="font-semibold text-white text-xs">Recommended Provider Mix</p>
+    <p className="text-gray-300">The combination of BNPL providers generating the highest estimated portfolio economic benefit under current assumptions.</p>
+    <p className="text-gray-500 text-[10px] italic">Model-driven. Should be validated through commercial and operational review.</p>
+  </div>
+);
+
+const TT_TOP_PROVIDER = (
+  <div className="space-y-1.5 max-w-[260px]">
+    <p className="font-semibold text-white text-xs">Top Performing Provider</p>
+    <p className="text-gray-300">The BNPL provider generating the highest estimated net economic benefit across evaluated markets.</p>
+  </div>
+);
+
+const TT_TOP_REGION = (
+  <div className="space-y-1.5 max-w-[260px]">
+    <p className="font-semibold text-white text-xs">Highest Opportunity Region</p>
+    <p className="text-gray-300">The region generating the largest estimated economic benefit under current assumptions.</p>
+  </div>
+);
+
+const TT_BNPL_VOLUME = (
+  <div className="space-y-1.5 max-w-[260px]">
+    <p className="font-semibold text-white text-xs">BNPL Volume</p>
+    <p className="text-gray-300">Estimated registration value expected to be processed through BNPL based on configured adoption assumptions.</p>
+    <div className="bg-gray-800 rounded-lg px-2.5 py-2 mt-1">
+      <p className="text-gray-400 text-[10px] font-semibold uppercase tracking-wide mb-1">Formula</p>
+      <p className="text-gray-200 text-[10px]">Registrations × Average Ticket Price × BNPL Adoption %</p>
+    </div>
+  </div>
+);
+
+const TT_INCR_COST = (
+  <div className="space-y-1.5 max-w-[260px]">
+    <p className="font-semibold text-white text-xs">Incremental Processing Cost</p>
+    <p className="text-gray-300">Additional provider processing expense associated with BNPL adoption compared to current payment methods.</p>
+    <p className="text-gray-500 text-[10px] italic">Positive = BNPL costs more than standard card processing. Negative = BNPL is cheaper.</p>
+  </div>
+);
+
+const TT_INCR_REVENUE = (
+  <div className="space-y-1.5 max-w-[260px]">
+    <p className="font-semibold text-white text-xs">Incremental Revenue</p>
+    <p className="text-gray-300">Estimated additional registration revenue generated from conversion uplift attributed to BNPL availability.</p>
+    <div className="bg-gray-800 rounded-lg px-2.5 py-2 mt-1">
+      <p className="text-gray-400 text-[10px] font-semibold uppercase tracking-wide mb-1">Formula</p>
+      <p className="text-gray-200 text-[10px]">Gross Revenue × Conversion Uplift %</p>
+    </div>
+  </div>
+);
+
+const ROADMAP_TOOLTIPS: Record<string, React.ReactNode> = {
+  'Stripe Data': (
+    <div className="space-y-1 max-w-[240px]">
+      <p className="font-semibold text-white text-xs">Stripe Data Integration</p>
+      <p className="text-gray-300 text-[10px]">Future integration of actual Stripe transaction data, processing fees, settlement activity, and BNPL performance metrics.</p>
+    </div>
+  ),
+  'Registration Platform Data': (
+    <div className="space-y-1 max-w-[240px]">
+      <p className="font-semibold text-white text-xs">Registration Platform Data</p>
+      <p className="text-gray-300 text-[10px]">Future integration of Njuko, TicketSocket, and registration platform data for actual registrations and adoption tracking.</p>
+    </div>
+  ),
+  'CRM Data': (
+    <div className="space-y-1 max-w-[240px]">
+      <p className="font-semibold text-white text-xs">CRM Data Integration</p>
+      <p className="text-gray-300 text-[10px]">Future integration of athlete segmentation, behavioral analytics, and historical conversion performance.</p>
+    </div>
+  ),
+  'Event-Level Analytics': (
+    <div className="space-y-1 max-w-[240px]">
+      <p className="font-semibold text-white text-xs">Event-Level Analytics</p>
+      <p className="text-gray-300 text-[10px]">Future integration of event-level reporting, adoption analysis, post-event reconciliation, and actual-versus-modeled performance tracking.</p>
+    </div>
+  ),
+};
 
 // ─── Shared UI ────────────────────────────────────────────────────────────────
 
@@ -189,8 +416,8 @@ const selectCls = inputCls + ' cursor-pointer appearance-none';
 type CardColor = 'green' | 'blue' | 'amber' | 'red' | 'default';
 
 function KpiCard({
-  label, value, sub, icon: Icon, color = 'default', showNebTooltip = false,
-}: { label: string; value: string; sub?: string; icon?: React.ElementType; color?: CardColor; showNebTooltip?: boolean }) {
+  label, value, sub, icon: Icon, color = 'default', tooltip,
+}: { label: string; value: string; sub?: string; icon?: React.ElementType; color?: CardColor; tooltip?: React.ReactNode }) {
   const bg: Record<CardColor, string> = {
     green: 'bg-emerald-50 border-emerald-200',
     blue: 'bg-blue-50 border-blue-200',
@@ -210,7 +437,7 @@ function KpiCard({
       <div className="flex items-center gap-1.5 mb-1.5">
         {Icon && <Icon size={12} className={`${vc[color]} flex-shrink-0`} />}
         <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide leading-tight">{label}</p>
-        {showNebTooltip && <NebInfo />}
+        {tooltip && <InfoTooltip content={tooltip} />}
       </div>
       <p className={`text-lg font-bold leading-tight ${vc[color]}`}>{value}</p>
       {sub && <p className="text-[11px] text-gray-500 mt-0.5 leading-snug">{sub}</p>}
@@ -515,10 +742,13 @@ function MarketTable({
         <table className="w-full text-xs">
           <thead className="bg-gray-50 border-b border-gray-200">
             <tr>
-              {['Brand', 'Region', 'Provider', 'Confidence', 'Registrations', 'Avg Entry Fee', 'BNPL Adoption %', 'Uplift %', 'Margin %', 'BNPL Volume', 'BNPL Processing Cost', 'Incr. Processing Cost'].map(h => (
-                <th key={h} className={thCls}>{h}</th>
-              ))}
-              <th className={thCls}><span className="flex items-center gap-1">Est. Net Economic Benefit <NebInfo /></span></th>
+              {['Brand', 'Region', 'Provider'].map(h => <th key={h} className={thCls}>{h}</th>)}
+              <th className={thCls}><span className="flex items-center gap-1">Confidence <InfoTooltip content={TT_CONFIDENCE} /></span></th>
+              {['Registrations', 'Avg Entry Fee', 'BNPL Adoption %', 'Uplift %', 'Margin %'].map(h => <th key={h} className={thCls}>{h}</th>)}
+              <th className={thCls}><span className="flex items-center gap-1">BNPL Volume <InfoTooltip content={TT_BNPL_VOLUME} /></span></th>
+              <th className={thCls}>BNPL Processing Cost</th>
+              <th className={thCls}><span className="flex items-center gap-1">Incr. Processing Cost <InfoTooltip content={TT_INCR_COST} /></span></th>
+              <th className={thCls}><span className="flex items-center gap-1">Est. Net Economic Benefit <InfoTooltip content={TT_NEB} /></span></th>
               <th className={thCls}></th>
             </tr>
           </thead>
@@ -698,10 +928,12 @@ function EventTable({
         <table className="w-full text-xs">
           <thead className="bg-gray-50 border-b border-gray-200">
             <tr>
-              {['Event Type', 'Region', 'Confidence', 'Registrations', 'Avg Ticket Price', 'BNPL Adoption %', 'Uplift %', 'Margin %', 'BNPL Volume', 'Incremental Revenue'].map(h => (
-                <th key={h} className={thCls}>{h}</th>
-              ))}
-              <th className={thCls}><span className="flex items-center gap-1">Est. Net Economic Benefit <NebInfo /></span></th>
+              {['Event Type', 'Region'].map(h => <th key={h} className={thCls}>{h}</th>)}
+              <th className={thCls}><span className="flex items-center gap-1">Confidence <InfoTooltip content={TT_CONFIDENCE} /></span></th>
+              {['Registrations', 'Avg Ticket Price', 'BNPL Adoption %', 'Uplift %', 'Margin %'].map(h => <th key={h} className={thCls}>{h}</th>)}
+              <th className={thCls}><span className="flex items-center gap-1">BNPL Volume <InfoTooltip content={TT_BNPL_VOLUME} /></span></th>
+              <th className={thCls}><span className="flex items-center gap-1">Incremental Revenue <InfoTooltip content={TT_INCR_REVENUE} /></span></th>
+              <th className={thCls}><span className="flex items-center gap-1">Est. Net Economic Benefit <InfoTooltip content={TT_NEB} /></span></th>
               <th className={thCls}></th>
             </tr>
           </thead>
@@ -916,10 +1148,11 @@ function ProviderDashboard({ marketRows, feeTable }: { marketRows: MarketRow[]; 
         <table className="w-full text-xs">
           <thead className="bg-gray-50 border-b border-gray-200">
             <tr>
-              {['Provider', 'Regions Enabled', 'Avg Fee %', 'Avg Adoption', 'Total BNPL Volume', 'Total BNPL Cost', 'Total Incr. Cost'].map(h => (
-                <th key={h} className={thCls}>{h}</th>
-              ))}
-              <th className={thCls}><span className="flex items-center gap-1">Est. Net Economic Benefit <NebInfo /></span></th>
+              {['Provider', 'Regions Enabled', 'Avg Fee %', 'Avg Adoption'].map(h => <th key={h} className={thCls}>{h}</th>)}
+              <th className={thCls}><span className="flex items-center gap-1">Total BNPL Volume <InfoTooltip content={TT_BNPL_VOLUME} /></span></th>
+              <th className={thCls}>Total BNPL Cost</th>
+              <th className={thCls}><span className="flex items-center gap-1">Total Incr. Cost <InfoTooltip content={TT_INCR_COST} /></span></th>
+              <th className={thCls}><span className="flex items-center gap-1">Est. Net Economic Benefit <InfoTooltip content={TT_NEB} /></span></th>
               <th className={thCls}>Recommendation</th>
             </tr>
           </thead>
@@ -967,7 +1200,7 @@ function ProviderDashboard({ marketRows, feeTable }: { marketRows: MarketRow[]; 
                   <tr className="border-b border-gray-100">
                     <th className={thCls}>Region</th>
                     <th className={thCls}>Recommended Provider</th>
-                    <th className={thCls}><span className="flex items-center gap-1">Est. NEB <NebInfo /></span></th>
+                    <th className={thCls}><span className="flex items-center gap-1">Est. NEB <InfoTooltip content={TT_NEB} /></span></th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
@@ -1002,7 +1235,7 @@ function ProviderDashboard({ marketRows, feeTable }: { marketRows: MarketRow[]; 
                   <tr className="border-b border-gray-100">
                     <th className={thCls}>Brand</th>
                     <th className={thCls}>Recommended Provider</th>
-                    <th className={thCls}><span className="flex items-center gap-1">Est. NEB <NebInfo /></span></th>
+                    <th className={thCls}><span className="flex items-center gap-1">Est. NEB <InfoTooltip content={TT_NEB} /></span></th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
@@ -1109,7 +1342,10 @@ function RolloutMatrix({ marketRows, feeTable }: { marketRows: MarketRow[]; feeT
         ] as const).map(({ wave, label, desc, items, cls }) => (
           <div key={wave} className={`rounded-xl border p-3 ${cls}`}>
             <div className="flex items-center justify-between mb-1">
-              <span className={`text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded border ${WAVE_BADGE[wave as RolloutWave]}`}>Wave {wave}</span>
+              <div className="flex items-center gap-1.5">
+                <span className={`text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded border ${WAVE_BADGE[wave as RolloutWave]}`}>Wave {wave}</span>
+                <InfoTooltip content={TT_WAVE} />
+              </div>
               <span className="text-sm font-bold text-gray-800">{items.length} region{items.length !== 1 ? 's' : ''}</span>
             </div>
             <p className="text-[11px] font-semibold text-gray-700 mt-1">{label}</p>
@@ -1130,10 +1366,15 @@ function RolloutMatrix({ marketRows, feeTable }: { marketRows: MarketRow[]; feeT
         <table className="w-full text-xs">
           <thead className="bg-gray-50 border-b border-gray-200">
             <tr>
-              {['Region', 'Rec. Provider', 'Opportunity', 'Confidence', 'Wave', 'Payback Period', 'Markets', 'Est. BNPL Volume'].map(h => (
-                <th key={h} className={thCls}>{h}</th>
-              ))}
-              <th className={thCls}><span className="flex items-center gap-1">Est. Net Economic Benefit <NebInfo /></span></th>
+              <th className={thCls}>Region</th>
+              <th className={thCls}>Rec. Provider</th>
+              <th className={thCls}><span className="flex items-center gap-1">Opportunity <InfoTooltip content={TT_OPPORTUNITY} /></span></th>
+              <th className={thCls}><span className="flex items-center gap-1">Confidence <InfoTooltip content={TT_CONFIDENCE} /></span></th>
+              <th className={thCls}><span className="flex items-center gap-1">Wave <InfoTooltip content={TT_WAVE} /></span></th>
+              <th className={thCls}><span className="flex items-center gap-1">Payback Period <InfoTooltip content={TT_PAYBACK} /></span></th>
+              <th className={thCls}>Markets</th>
+              <th className={thCls}><span className="flex items-center gap-1">Est. BNPL Volume <InfoTooltip content={TT_BNPL_VOLUME} /></span></th>
+              <th className={thCls}><span className="flex items-center gap-1">Est. Net Economic Benefit <InfoTooltip content={TT_NEB} /></span></th>
               <th className={thCls}>Recommendation</th>
             </tr>
           </thead>
@@ -1158,7 +1399,7 @@ function RolloutMatrix({ marketRows, feeTable }: { marketRows: MarketRow[]; feeT
                   </span>
                 </td>
                 <td className="px-3 py-2.5">
-                  <span className={`text-[11px] font-semibold px-1.5 py-0.5 rounded ${paybackBadgeCls(r.payback)}`} title="Estimated time for incremental commercial benefit to offset incremental BNPL processing cost. Formula: Incremental Processing Cost ÷ Estimated Net Economic Benefit.">
+                  <span className={`text-[11px] font-semibold px-1.5 py-0.5 rounded ${paybackBadgeCls(r.payback)}`}>
                     {r.payback}
                   </span>
                 </td>
@@ -1242,7 +1483,7 @@ function PortfolioCharts({
       <div className="grid grid-cols-2 gap-4">
         {/* A: Est. Net Economic Benefit by Region */}
         <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3 flex items-center gap-1.5">A. Est. Net Economic Benefit by Region <NebInfo /></p>
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3 flex items-center gap-1.5">A. Est. Net Economic Benefit by Region <InfoTooltip content={TT_NEB} /></p>
           {regionImpactData.length === 0 ? <ChartEmpty /> : (
             <ResponsiveContainer width="100%" height={220}>
               <BarChart data={regionImpactData} barCategoryGap="35%" layout="vertical" margin={{ left: 90, right: 10 }}>
@@ -1260,7 +1501,7 @@ function PortfolioCharts({
 
         {/* B: Provider Comparison — Est. Net Economic Benefit */}
         <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3 flex items-center gap-1.5">B. Provider Comparison — Est. Net Economic Benefit <NebInfo /></p>
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3 flex items-center gap-1.5">B. Provider Comparison — Est. Net Economic Benefit <InfoTooltip content={TT_NEB} /></p>
           {providerData.length === 0 ? <ChartEmpty /> : (
             <ResponsiveContainer width="100%" height={220}>
               <BarChart data={providerData} barCategoryGap="40%">
@@ -1313,7 +1554,7 @@ function PortfolioCharts({
 
       {/* E: Top 10 Rollout Opportunities — full width */}
       <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
-        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3 flex items-center gap-1.5">E. Top 10 Rollout Opportunities — Est. Net Economic Benefit <NebInfo /></p>
+        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3 flex items-center gap-1.5">E. Top 10 Rollout Opportunities — Est. Net Economic Benefit <InfoTooltip content={TT_NEB} /></p>
         {top10Data.length === 0 ? <ChartEmpty /> : (
           <ResponsiveContainer width="100%" height={240}>
             <BarChart data={top10Data} barCategoryGap="30%" layout="vertical" margin={{ left: 160, right: 60 }}>
@@ -1596,6 +1837,7 @@ export default function PortfolioDashboard({ config, onExportCsv }: PortfolioDas
             sub={hasData && agg.totalBnplVolume > 0 ? `${fmt(agg.totalBnplVolume / Math.max(agg.totalGrossRevenue, 1) * 100, 'percent')} of gross revenue` : undefined}
             icon={Activity}
             color="blue"
+            tooltip={TT_BNPL_VOLUME}
           />
           <KpiCard
             label="Total Incr. Processing Cost"
@@ -1603,14 +1845,15 @@ export default function PortfolioDashboard({ config, onExportCsv }: PortfolioDas
             sub={hasData && agg.totalBnplVolume > 0 ? `BNPL processing cost: ${fmtCompact(agg.totalBnplProcessingCost)}` : undefined}
             icon={DollarSign}
             color={hasData && agg.totalIncrementalCost > 0 ? 'red' : 'default'}
+            tooltip={TT_INCR_COST}
           />
           <KpiCard
             label="Est. Net Economic Benefit"
             value={hasData && agg.totalBnplVolume > 0 ? (agg.totalNetImpact >= 0 ? '+' : '') + fmtCompact(agg.totalNetImpact) : '—'}
             sub={hasData && agg.totalBnplVolume > 0 ? 'Portfolio total (evaluated rows)' : 'Configure market rows'}
-            showNebTooltip
             icon={TrendingUp}
             color={hasData && agg.totalBnplVolume > 0 ? (agg.totalNetImpact > 0 ? 'green' : agg.totalNetImpact < 0 ? 'red' : 'default') : 'default'}
+            tooltip={TT_NEB}
           />
           <KpiCard
             label="Highest Opportunity Region"
@@ -1618,6 +1861,7 @@ export default function PortfolioDashboard({ config, onExportCsv }: PortfolioDas
             sub={hasData && topRegion.value > -Infinity ? fmtCompact(topRegion.value) + ' net benefit' : undefined}
             icon={Globe}
             color="green"
+            tooltip={TT_TOP_REGION}
           />
           <KpiCard
             label="Top Performing Provider"
@@ -1625,6 +1869,7 @@ export default function PortfolioDashboard({ config, onExportCsv }: PortfolioDas
             sub={hasData && topProvider.value > -Infinity ? fmtCompact(topProvider.value) + ' net benefit' : undefined}
             icon={Award}
             color="green"
+            tooltip={TT_TOP_PROVIDER}
           />
           <KpiCard
             label="Highest Adoption Region"
@@ -1639,6 +1884,7 @@ export default function PortfolioDashboard({ config, onExportCsv }: PortfolioDas
             sub={hasData ? 'By highest net benefit' : undefined}
             icon={Zap}
             color="default"
+            tooltip={TT_REC_PROVIDER_MIX}
           />
           <KpiCard
             label="Total Gross Registration Revenue"
@@ -1731,6 +1977,7 @@ export default function PortfolioDashboard({ config, onExportCsv }: PortfolioDas
               <div className="flex items-center gap-1.5">
                 <p className="text-xs font-semibold text-gray-700">{item.label}</p>
                 <span className="inline-block text-[9px] px-1.5 py-0.5 bg-gray-200 text-gray-500 rounded-full font-bold">Future Integration</span>
+                {ROADMAP_TOOLTIPS[item.label] && <InfoTooltip content={ROADMAP_TOOLTIPS[item.label]} />}
               </div>
               <p className="text-xs text-gray-400 leading-relaxed">{item.desc}</p>
             </div>
