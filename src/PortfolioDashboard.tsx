@@ -1959,31 +1959,6 @@ export default function PortfolioDashboard({ config, onExportCsv }: PortfolioDas
         <RolloutMatrix marketRows={filteredMarkets} feeTable={feeTable} />
       </CollapsiblePanel>
 
-      {/* ── Future Integration Framework ── */}
-      <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50 p-5">
-        <div className="flex items-center gap-2 mb-3">
-          <Zap size={13} className="text-gray-400" />
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Future Integration Roadmap</p>
-          <span className="text-[10px] px-2 py-0.5 bg-gray-200 text-gray-500 rounded-full font-semibold">Informational</span>
-        </div>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          {[
-            { label: 'Stripe Data', desc: 'Real-time fee data, actual BNPL transaction volumes, and processing cost reconciliation against configured assumptions.' },
-            { label: 'Registration Platform Data', desc: 'Live registration counts, event-level volumes, and BNPL payment method selection rates from the registration platform.' },
-            { label: 'CRM Data', desc: 'Athlete segment data, historical BNPL adoption rates, and cohort-level conversion performance over time.' },
-            { label: 'Event-Level Analytics', desc: 'Per-event BNPL economics, real-time adoption tracking, post-event reconciliation, and actual vs. modeled comparisons.' },
-          ].map(item => (
-            <div key={item.label} className="space-y-1.5">
-              <div className="flex items-center gap-1.5">
-                <p className="text-xs font-semibold text-gray-700">{item.label}</p>
-                <span className="inline-block text-[9px] px-1.5 py-0.5 bg-gray-200 text-gray-500 rounded-full font-bold">Future Integration</span>
-                {ROADMAP_TOOLTIPS[item.label] && <InfoTooltip content={ROADMAP_TOOLTIPS[item.label]} />}
-              </div>
-              <p className="text-xs text-gray-400 leading-relaxed">{item.desc}</p>
-            </div>
-          ))}
-        </div>
-      </div>
 
       {/* ── Export button (inline, bottom of dashboard) ── */}
       <div className="flex justify-end">
