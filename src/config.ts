@@ -72,8 +72,12 @@ export function loadConfig(): AppConfig {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw) as AppConfig;
-      // Backfill metadata for configs saved before this field was added
       if (!parsed.metadata) parsed.metadata = structuredClone(STARTER_METADATA);
+      // Backfill any fee rows that exist in STARTER_FEE_TABLE but not in saved config
+      // (covers users who saved before f16–f18 Klarna European aliases were added)
+      const existingIds = new Set(parsed.feeTable.map(f => f.id));
+      const missing = STARTER_FEE_TABLE.filter(f => !existingIds.has(f.id));
+      if (missing.length > 0) parsed.feeTable = [...parsed.feeTable, ...missing];
       return parsed;
     }
   } catch { /* ignore */ }

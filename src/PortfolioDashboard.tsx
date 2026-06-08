@@ -104,7 +104,6 @@ function calcMarket(m: MarketRow, feeTable: FeeRow[]): CalcResult {
 // ─── Opportunity & Rollout helpers ────────────────────────────────────────────
 
 type OpportunityLevel = 'High' | 'Medium' | 'Low';
-type PaybackPeriod = 'Immediate' | '< 1 Season' | 'Needs Validation' | 'Not Yet Evaluated';
 type RolloutWave = 1 | 2 | 3;
 
 const THRESHOLDS = { high: 50_000, medium: 25_000 };
@@ -115,19 +114,24 @@ function opportunityLevel(nci: number): OpportunityLevel {
   return 'Low';
 }
 
-function calcPaybackPeriod(netImpact: number, incrementalCost: number, hasFeeConfig: boolean): PaybackPeriod {
-  if (!hasFeeConfig) return 'Not Yet Evaluated';
+// Payback = incrementalCost / netImpact (in years), displayed as months or years
+function calcPaybackPeriod(netImpact: number, incrementalCost: number, hasFeeConfig: boolean): string {
+  if (!hasFeeConfig) return 'Not Evaluated';
   if (incrementalCost <= 0) return 'Immediate';
-  const bcr = netImpact / incrementalCost;
-  if (bcr >= 2) return 'Immediate';
-  if (bcr >= 1) return '< 1 Season';
-  return 'Needs Validation';
+  if (netImpact <= 0) return 'Needs Validation';
+  const paybackYears = incrementalCost / netImpact;
+  if (paybackYears < (1 / 12)) return 'Immediate';
+  const months = Math.round(paybackYears * 12);
+  if (months <= 12) return `${months} Month${months !== 1 ? 's' : ''}`;
+  return `${paybackYears.toFixed(1)} Years`;
 }
 
+// Wave 1: High NEB + High/Medium confidence
+// Wave 2: Medium NEB + High/Medium confidence
+// Wave 3: Low NEB OR Low confidence
 function rolloutWave(level: OpportunityLevel, confidence: ConfidenceLevel): RolloutWave {
   if (level === 'High' && (confidence === 'High' || confidence === 'Medium')) return 1;
-  if (level === 'High' && confidence === 'Low') return 2;
-  if (level === 'Medium') return 2;
+  if (level === 'Medium' && (confidence === 'High' || confidence === 'Medium')) return 2;
   return 3;
 }
 
@@ -150,12 +154,12 @@ const WAVE_BADGE: Record<RolloutWave, string> = {
   3: 'bg-gray-100 text-gray-600 border-gray-200',
 };
 
-const PAYBACK_BADGE: Record<PaybackPeriod, string> = {
-  'Immediate': 'text-emerald-700 bg-emerald-50',
-  '< 1 Season': 'text-blue-700 bg-blue-50',
-  'Needs Validation': 'text-amber-700 bg-amber-50',
-  'Not Yet Evaluated': 'text-gray-400 bg-gray-50',
-};
+function paybackBadgeCls(p: string): string {
+  if (p === 'Immediate') return 'text-emerald-700 bg-emerald-50';
+  if (p === 'Needs Validation') return 'text-amber-700 bg-amber-50';
+  if (p === 'Not Evaluated') return 'text-gray-400 bg-gray-50';
+  return 'text-blue-700 bg-blue-50'; // X Months / X Years
+}
 
 const CHART_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#84cc16'];
 
@@ -370,46 +374,45 @@ function InsightsPanel({ agg, filteredMarkets, feeTable }: { agg: PortfolioAgg; 
     if (filteredMarkets.length === 0) return [];
     const result: string[] = [];
 
-    // 1. Top region share of Estimated Net Economic Benefit
+    // 1. Top region share of NEB
     let topRegion = ''; let topRegionNci = -Infinity;
     agg.regionNciMap.forEach((v, k) => { if (v > topRegionNci) { topRegionNci = v; topRegion = k; } });
     if (topRegion && agg.totalNetImpact !== 0) {
       const share = Math.abs(topRegionNci / agg.totalNetImpact * 100);
-      result.push(`${topRegion} currently represents ${share.toFixed(0)}% of total estimated portfolio Estimated Net Economic Benefit under current assumptions.`);
+      result.push(`${topRegion} represents ${share.toFixed(0)}% of total portfolio Estimated Net Economic Benefit under current assumptions, making it the single largest contributor to portfolio value.`);
     }
 
     // 2. Best provider
     let topProvider = ''; let topProviderNci = -Infinity;
     agg.providerNciMap.forEach((v, k) => { if (v > topProviderNci) { topProviderNci = v; topProvider = k; } });
     if (topProvider) {
-      result.push(`${topProvider} generates the highest Estimated Net Economic Benefit (${fmtCompact(topProviderNci)}) across the filtered portfolio under current assumptions.`);
+      result.push(`${topProvider} is the highest-performing provider across the filtered portfolio, generating ${fmtCompact(topProviderNci)} in Estimated Net Economic Benefit under current assumptions.`);
     }
 
     // 3. Wave 1 count
     const wave1Markets = filteredMarkets.filter(m => {
-      const feeRow = resolveMarketFeeRow(m, feeTable);
-      if (!feeRow) return false;
-      const { netImpact, incrementalCost } = calcMarket(m, feeTable);
-      const oLevel = opportunityLevel(netImpact);
-      const wave = rolloutWave(oLevel, m.confidence ?? 'Low');
-      return wave === 1;
+      if (!resolveMarketFeeRow(m, feeTable)) return false;
+      return rolloutWave(opportunityLevel(calcMarket(m, feeTable).netImpact), m.confidence ?? 'Low') === 1;
     });
     if (wave1Markets.length > 0) {
-      result.push(`${wave1Markets.length} market${wave1Markets.length !== 1 ? 's' : ''} qualify for Wave 1 priority rollout based on High opportunity level and High/Medium confidence. These represent the strongest near-term deployment candidates.`);
+      const wave1Regions = [...new Set(wave1Markets.map(m => m.region))];
+      result.push(`${wave1Markets.length} market${wave1Markets.length !== 1 ? 's' : ''} across ${wave1Regions.length} region${wave1Regions.length !== 1 ? 's' : ''} qualify for Wave 1 priority rollout — these markets combine High economic opportunity with sufficient confidence to support near-term deployment decisions.`);
     }
 
     // 4. Confidence distribution
-    const highConf = filteredMarkets.filter(m => m.confidence === 'High').length;
     const lowConf = filteredMarkets.filter(m => m.confidence === 'Low').length;
+    const highConf = filteredMarkets.filter(m => m.confidence === 'High').length;
     if (lowConf > 0) {
-      result.push(`${lowConf} of ${filteredMarkets.length} configured market${filteredMarkets.length !== 1 ? 's' : ''} have Low confidence — assumptions for these markets should be independently validated before committing to rollout.`);
+      result.push(`${lowConf} of ${filteredMarkets.length} markets carry Low confidence — underlying assumptions for these markets should be independently validated before operational or financial commitments are made.`);
     } else if (highConf === filteredMarkets.length) {
-      result.push(`All ${filteredMarkets.length} configured market${filteredMarkets.length !== 1 ? 's have' : ' has'} High confidence — the portfolio is well-supported for strategic decision-making.`);
+      result.push(`All ${filteredMarkets.length} markets in the filtered view carry High confidence, providing a strong evidential basis for executive decision-making.`);
+    } else {
+      result.push(`The portfolio spans a mix of confidence levels. High-confidence markets are suitable for immediate decision-making; Medium-confidence markets warrant pilot validation before full deployment.`);
     }
 
     // 5. Total BNPL volume note
     if (agg.totalBnplVolume > 0) {
-      result.push(`Total estimated BNPL volume across the filtered portfolio is ${fmtCompact(agg.totalBnplVolume)}, representing ${fmt(agg.totalBnplVolume / agg.totalGrossRevenue * 100, 'percent')} of total gross registration revenue.`);
+      result.push(`Total estimated BNPL volume across the filtered portfolio is ${fmtCompact(agg.totalBnplVolume)}, representing ${fmt(agg.totalBnplVolume / agg.totalGrossRevenue * 100, 'percent')} of gross registration revenue — indicating the scale of payment optionality available to athletes.`);
     }
 
     return result.slice(0, 5);
@@ -468,12 +471,26 @@ function MarketTable({
   const hasMissingRate = rows.some(row => !resolveMarketFeeRow(row, feeTable));
   const missingCount = rows.length - evaluatedRows.length;
 
+  // Validation: find rows with out-of-range inputs
+  const invalidRows = useMemo(() => new Set(rows.filter(r =>
+    r.registrations < 0 || r.avgEntryFee < 0 ||
+    r.bnplAdoptionPercent < 0 || r.bnplAdoptionPercent > 100 ||
+    r.conversionUpliftPercent < 0 ||
+    r.contributionMarginPercent < 0 || r.contributionMarginPercent > 100
+  ).map(r => r.id)), [rows]);
+
   return (
     <div className="p-5 space-y-3">
       {hasMissingRate && (
         <div className="flex items-center gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
           <AlertTriangle size={12} className="flex-shrink-0" />
           {missingCount} row{missingCount !== 1 ? 's are' : ' is'} missing a fee configuration. Those rows show "Not yet evaluated" and are excluded from totals and charts. Add rates in Admin Configuration.
+        </div>
+      )}
+      {invalidRows.size > 0 && (
+        <div className="flex items-start gap-2 text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+          <AlertTriangle size={12} className="flex-shrink-0 mt-0.5" />
+          <span><strong>{invalidRows.size} row{invalidRows.size !== 1 ? 's have' : ' has'} out-of-range inputs</strong> (highlighted in red). Check that adoption and margin percentages are between 0–100%, and that registrations, entry fees, and uplift are non-negative.</span>
         </div>
       )}
       <div className="overflow-x-auto rounded-xl border border-gray-200">
@@ -493,11 +510,12 @@ function MarketTable({
                 </td>
               </tr>
             ) : rows.map(row => {
+              const isInvalid = invalidRows.has(row.id);
               const feeRow = resolveMarketFeeRow(row, feeTable);
               const { bnplVolume, bnplProcessingCost, incrementalCost, netImpact } = calcMarket(row, feeTable);
               const nciColor = netImpact > 500 ? 'text-emerald-700 font-semibold' : netImpact < -500 ? 'text-red-600 font-semibold' : 'text-amber-700 font-semibold';
               return (
-                <tr key={row.id} className="bg-white hover:bg-gray-50">
+                <tr key={row.id} className={`${isInvalid ? 'bg-red-50 border-l-2 border-l-red-400' : 'bg-white hover:bg-gray-50'}`}>
                   <td className={tdCls}>
                     <select className={selectCls} value={row.brand} onChange={e => onUpdate(row.id, 'brand', e.target.value as BrandName)}>
                       {BRANDS.filter(b => b !== 'All Brands').map(b => <option key={b}>{b}</option>)}
@@ -635,12 +653,25 @@ function EventTable({
 
   const hasMissingRate = rows.length > evaluatedRows.length;
 
+  const invalidEventRows = useMemo(() => new Set(rows.filter(r =>
+    r.registrations < 0 || r.avgTicketPrice < 0 ||
+    r.bnplAdoptionPercent < 0 || r.bnplAdoptionPercent > 100 ||
+    r.conversionUpliftPercent < 0 ||
+    r.contributionMarginPercent < 0 || r.contributionMarginPercent > 100
+  ).map(r => r.id)), [rows]);
+
   return (
     <div className="p-5 space-y-3">
       {hasMissingRate && (
         <div className="flex items-center gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
           <AlertTriangle size={12} className="flex-shrink-0" />
           {rows.length - evaluatedRows.length} row{rows.length - evaluatedRows.length !== 1 ? 's are' : ' is'} missing fee configuration and excluded from totals.
+        </div>
+      )}
+      {invalidEventRows.size > 0 && (
+        <div className="flex items-start gap-2 text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+          <AlertTriangle size={12} className="flex-shrink-0 mt-0.5" />
+          <span><strong>{invalidEventRows.size} row{invalidEventRows.size !== 1 ? 's have' : ' has'} out-of-range inputs</strong> (highlighted in red). Check that adoption and margin percentages are between 0–100%, and that registrations, ticket price, and uplift are non-negative.</span>
         </div>
       )}
       <div className="overflow-x-auto rounded-xl border border-gray-200">
@@ -660,6 +691,7 @@ function EventTable({
                 </td>
               </tr>
             ) : rows.map(row => {
+              const isInvalid = invalidEventRows.has(row.id);
               const feeRow = feeTable.find(f => f.active && f.country.toLowerCase() === row.region.toLowerCase()) ?? null;
               const { bnplVolume, netImpact } = calcRowImpact(
                 row.registrations, row.avgTicketPrice, row.bnplAdoptionPercent,
@@ -670,7 +702,7 @@ function EventTable({
               const incrRevenue = row.registrations * (row.conversionUpliftPercent / 100) * row.avgTicketPrice;
               const nciColor = netImpact > 500 ? 'text-emerald-700 font-semibold' : netImpact < -500 ? 'text-red-600 font-semibold' : 'text-amber-700 font-semibold';
               return (
-                <tr key={row.id} className="bg-white hover:bg-gray-50">
+                <tr key={row.id} className={`${isInvalid ? 'bg-red-50 border-l-2 border-l-red-400' : 'bg-white hover:bg-gray-50'}`}>
                   <td className={tdCls}>
                     <select className={selectCls} value={row.eventType} onChange={e => onUpdate(row.id, 'eventType', e.target.value as EventPortfolioType)}>
                       {EVENT_PORTFOLIO_TYPES.map(t => <option key={t}>{t}</option>)}
@@ -807,6 +839,44 @@ function ProviderDashboard({ marketRows, feeTable }: { marketRows: MarketRow[]; 
     }).sort((a, b) => b.totalNetImpact - a.totalNetImpact);
   }, [providers, marketRows, feeTable]);
 
+  // Best provider per region
+  const bestByRegion = useMemo(() => {
+    const regionMap = new Map<string, Map<string, number>>();
+    marketRows.forEach(m => {
+      const feeRow = resolveMarketFeeRow(m, feeTable);
+      if (!feeRow) return;
+      if (!regionMap.has(m.region)) regionMap.set(m.region, new Map());
+      const pMap = regionMap.get(m.region)!;
+      pMap.set(m.provider, (pMap.get(m.provider) ?? 0) + calcMarket(m, feeTable).netImpact);
+    });
+    const result: { region: string; provider: string; neb: number }[] = [];
+    regionMap.forEach((pMap, region) => {
+      let best = '', bestNeb = -Infinity;
+      pMap.forEach((neb, p) => { if (neb > bestNeb) { bestNeb = neb; best = p; } });
+      if (best) result.push({ region, provider: best, neb: bestNeb });
+    });
+    return result.sort((a, b) => b.neb - a.neb);
+  }, [marketRows, feeTable]);
+
+  // Best provider per brand
+  const bestByBrand = useMemo(() => {
+    const brandMap = new Map<string, Map<string, number>>();
+    marketRows.forEach(m => {
+      const feeRow = resolveMarketFeeRow(m, feeTable);
+      if (!feeRow) return;
+      if (!brandMap.has(m.brand)) brandMap.set(m.brand, new Map());
+      const pMap = brandMap.get(m.brand)!;
+      pMap.set(m.provider, (pMap.get(m.provider) ?? 0) + calcMarket(m, feeTable).netImpact);
+    });
+    const result: { brand: string; provider: string; neb: number }[] = [];
+    brandMap.forEach((pMap, brand) => {
+      let best = '', bestNeb = -Infinity;
+      pMap.forEach((neb, p) => { if (neb > bestNeb) { bestNeb = neb; best = p; } });
+      if (best) result.push({ brand, provider: best, neb: bestNeb });
+    });
+    return result.sort((a, b) => b.neb - a.neb);
+  }, [marketRows, feeTable]);
+
   const best = stats.find(s => s.hasData);
 
   return (
@@ -857,6 +927,81 @@ function ProviderDashboard({ marketRows, feeTable }: { marketRows: MarketRow[]; 
           </tbody>
         </table>
       </div>
+
+      {/* Best provider by region + by brand */}
+      {(bestByRegion.length > 0 || bestByBrand.length > 0) && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {/* By Region */}
+          {bestByRegion.length > 0 && (
+            <div className="rounded-xl border border-gray-200 overflow-hidden">
+              <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center gap-2">
+                <Globe size={12} className="text-blue-500 flex-shrink-0" />
+                <p className="text-[11px] font-semibold text-gray-600 uppercase tracking-wide">Best Provider by Region</p>
+              </div>
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-gray-100">
+                    <th className={thCls}>Region</th>
+                    <th className={thCls}>Recommended Provider</th>
+                    <th className={thCls}>Est. NEB</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {bestByRegion.map((r, i) => (
+                    <tr key={r.region} className={i === 0 ? 'bg-emerald-50' : 'bg-white hover:bg-gray-50'}>
+                      <td className="px-3 py-2 text-xs text-gray-700 font-medium whitespace-nowrap">{r.region}</td>
+                      <td className="px-3 py-2 text-xs whitespace-nowrap">
+                        <div className="flex items-center gap-1.5">
+                          {i === 0 && <Award size={10} className="text-emerald-600" />}
+                          <span className={`font-semibold ${i === 0 ? 'text-emerald-700' : 'text-gray-700'}`}>{r.provider}</span>
+                        </div>
+                      </td>
+                      <td className={`px-3 py-2 text-xs font-semibold whitespace-nowrap ${r.neb >= THRESHOLDS.medium ? 'text-emerald-700' : r.neb < 0 ? 'text-red-600' : 'text-amber-700'}`}>
+                        {r.neb >= 0 ? '+' : ''}{fmtCompact(r.neb)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* By Brand */}
+          {bestByBrand.length > 0 && (
+            <div className="rounded-xl border border-gray-200 overflow-hidden">
+              <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center gap-2">
+                <Award size={12} className="text-amber-500 flex-shrink-0" />
+                <p className="text-[11px] font-semibold text-gray-600 uppercase tracking-wide">Best Provider by Brand</p>
+              </div>
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-gray-100">
+                    <th className={thCls}>Brand</th>
+                    <th className={thCls}>Recommended Provider</th>
+                    <th className={thCls}>Est. NEB</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {bestByBrand.map((b, i) => (
+                    <tr key={b.brand} className={i === 0 ? 'bg-emerald-50' : 'bg-white hover:bg-gray-50'}>
+                      <td className="px-3 py-2 text-xs text-gray-700 font-medium whitespace-nowrap">{b.brand}</td>
+                      <td className="px-3 py-2 text-xs whitespace-nowrap">
+                        <div className="flex items-center gap-1.5">
+                          {i === 0 && <Award size={10} className="text-emerald-600" />}
+                          <span className={`font-semibold ${i === 0 ? 'text-emerald-700' : 'text-gray-700'}`}>{b.provider}</span>
+                        </div>
+                      </td>
+                      <td className={`px-3 py-2 text-xs font-semibold whitespace-nowrap ${b.neb >= THRESHOLDS.medium ? 'text-emerald-700' : b.neb < 0 ? 'text-red-600' : 'text-amber-700'}`}>
+                        {b.neb >= 0 ? '+' : ''}{fmtCompact(b.neb)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -934,9 +1079,9 @@ function RolloutMatrix({ marketRows, feeTable }: { marketRows: MarketRow[]; feeT
       {/* Wave summary */}
       <div className="grid grid-cols-3 gap-3">
         {([
-          { wave: 1, label: 'Wave 1 — Priority', desc: 'High opportunity + High/Medium confidence', items: wave1, cls: 'bg-emerald-50 border-emerald-200' },
-          { wave: 2, label: 'Wave 2 — Selective', desc: 'Medium opportunity or Low confidence High', items: wave2, cls: 'bg-blue-50 border-blue-200' },
-          { wave: 3, label: 'Wave 3 — Deferred', desc: 'Low opportunity or insufficient confidence', items: wave3, cls: 'bg-gray-50 border-gray-200' },
+          { wave: 1, label: 'Wave 1 — Priority Rollout', desc: 'NEB ≥ $50k + High/Medium confidence', items: wave1, cls: 'bg-emerald-50 border-emerald-200' },
+          { wave: 2, label: 'Wave 2 — Selective Pilot', desc: 'NEB $25k–$50k + High/Medium confidence', items: wave2, cls: 'bg-blue-50 border-blue-200' },
+          { wave: 3, label: 'Wave 3 — Deferred', desc: 'NEB < $25k or Low confidence', items: wave3, cls: 'bg-gray-50 border-gray-200' },
         ] as const).map(({ wave, label, desc, items, cls }) => (
           <div key={wave} className={`rounded-xl border p-3 ${cls}`}>
             <div className="flex items-center justify-between mb-1">
@@ -987,7 +1132,7 @@ function RolloutMatrix({ marketRows, feeTable }: { marketRows: MarketRow[]; feeT
                   </span>
                 </td>
                 <td className="px-3 py-2.5">
-                  <span className={`text-[11px] font-semibold px-1.5 py-0.5 rounded ${PAYBACK_BADGE[r.payback]}`}>
+                  <span className={`text-[11px] font-semibold px-1.5 py-0.5 rounded ${paybackBadgeCls(r.payback)}`} title="Estimated time for incremental commercial benefit to offset incremental BNPL processing cost. Formula: Incremental Processing Cost ÷ Estimated Net Economic Benefit.">
                     {r.payback}
                   </span>
                 </td>
@@ -1005,7 +1150,7 @@ function RolloutMatrix({ marketRows, feeTable }: { marketRows: MarketRow[]; feeT
         </table>
       </div>
       <p className="text-[10px] text-gray-400">
-        Only regions with configured market data are shown. High: Net Economic Benefit ≥ $50k · Medium: $25k–$50k · Low: Below $25k. Payback Period based on Benefit-to-Cost Ratio.
+        Only regions with configured market data are shown. High: NEB ≥ $50k · Medium: $25k–$50k · Low: Below $25k · Wave classification: Wave 1 = High + High/Medium confidence; Wave 2 = Medium + High/Medium confidence; Wave 3 = Low NEB or Low confidence.
       </p>
     </div>
   );
