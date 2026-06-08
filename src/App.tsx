@@ -603,6 +603,15 @@ export default function App() {
                 Export CSV
               </button>
             )}
+            {activeTab === 'portfolio' && (
+              <button
+                onClick={() => window.dispatchEvent(new Event('portfolio-export-csv'))}
+                className="flex items-center gap-2 px-3 py-2 text-xs font-semibold bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-all"
+              >
+                <Download size={13} />
+                Export Portfolio CSV
+              </button>
+            )}
           </div>
         </div>
       </header>

@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   Cell, PieChart, Pie, Legend,
@@ -6,13 +6,13 @@ import {
 import {
   TrendingUp, Award, Globe, Plus, Trash2, ChevronDown,
   BarChart2, AlertTriangle, Lightbulb, Users, DollarSign,
-  Activity, MapPin, Zap,
+  Activity, MapPin, Zap, Download,
 } from 'lucide-react';
 import type {
   AppConfig, FeeRow, MarketRow, EventPortfolioRow,
-  BrandName, RegionName, EventPortfolioType,
+  BrandName, RegionName, EventPortfolioType, ConfidenceLevel,
 } from './types';
-import { BRANDS, ALL_REGIONS, EVENT_PORTFOLIO_TYPES } from './types';
+import { BRANDS, ALL_REGIONS, EVENT_PORTFOLIO_TYPES, CONFIDENCE_LEVELS, DEFAULT_CONFIDENCE } from './types';
 import { loadMarketRows, saveMarketRows, loadEventRows, saveEventRows, uid } from './config';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -101,9 +101,11 @@ function calcMarket(m: MarketRow, feeTable: FeeRow[]): CalcResult {
   );
 }
 
-// ─── Opportunity level ────────────────────────────────────────────────────────
+// ─── Opportunity & Rollout helpers ────────────────────────────────────────────
 
 type OpportunityLevel = 'High' | 'Medium' | 'Low';
+type PaybackPeriod = 'Immediate' | '< 1 Season' | 'Needs Validation' | 'Not Yet Evaluated';
+type RolloutWave = 1 | 2 | 3;
 
 const THRESHOLDS = { high: 50_000, medium: 25_000 };
 
@@ -113,11 +115,46 @@ function opportunityLevel(nci: number): OpportunityLevel {
   return 'Low';
 }
 
+function calcPaybackPeriod(netImpact: number, incrementalCost: number, hasFeeConfig: boolean): PaybackPeriod {
+  if (!hasFeeConfig) return 'Not Yet Evaluated';
+  if (incrementalCost <= 0) return 'Immediate';
+  const bcr = netImpact / incrementalCost;
+  if (bcr >= 2) return 'Immediate';
+  if (bcr >= 1) return '< 1 Season';
+  return 'Needs Validation';
+}
+
+function rolloutWave(level: OpportunityLevel, confidence: ConfidenceLevel): RolloutWave {
+  if (level === 'High' && (confidence === 'High' || confidence === 'Medium')) return 1;
+  if (level === 'High' && confidence === 'Low') return 2;
+  if (level === 'Medium') return 2;
+  return 3;
+}
+
 const OPPORTUNITY_DOT: Record<OpportunityLevel, string> = { High: '🟢', Medium: '🟡', Low: '🔴' };
 const OPPORTUNITY_BADGE: Record<OpportunityLevel, string> = {
   High: 'text-emerald-700 bg-emerald-50 border-emerald-200',
   Medium: 'text-amber-700 bg-amber-50 border-amber-200',
   Low: 'text-red-700 bg-red-50 border-red-200',
+};
+
+const CONFIDENCE_BADGE: Record<ConfidenceLevel, string> = {
+  High: 'text-emerald-700 bg-emerald-50 border-emerald-200',
+  Medium: 'text-amber-700 bg-amber-50 border-amber-200',
+  Low: 'text-gray-500 bg-gray-50 border-gray-200',
+};
+
+const WAVE_BADGE: Record<RolloutWave, string> = {
+  1: 'bg-emerald-100 text-emerald-800 border-emerald-200',
+  2: 'bg-blue-100 text-blue-800 border-blue-200',
+  3: 'bg-gray-100 text-gray-600 border-gray-200',
+};
+
+const PAYBACK_BADGE: Record<PaybackPeriod, string> = {
+  'Immediate': 'text-emerald-700 bg-emerald-50',
+  '< 1 Season': 'text-blue-700 bg-blue-50',
+  'Needs Validation': 'text-amber-700 bg-amber-50',
+  'Not Yet Evaluated': 'text-gray-400 bg-gray-50',
 };
 
 const CHART_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#84cc16'];
@@ -311,7 +348,7 @@ function FilterBar({
   );
 }
 
-// ─── Executive Insights Panel ─────────────────────────────────────────────────
+// ─── Portfolio Aggregation ────────────────────────────────────────────────────
 
 interface PortfolioAgg {
   totalRegistrations: number;
@@ -326,41 +363,48 @@ interface PortfolioAgg {
   regionAdoptionMap: Map<string, { sum: number; count: number }>;
 }
 
-function InsightsPanel({ agg, filteredMarkets }: { agg: PortfolioAgg; filteredMarkets: MarketRow[] }) {
+// ─── Executive Insights Panel ─────────────────────────────────────────────────
+
+function InsightsPanel({ agg, filteredMarkets, feeTable }: { agg: PortfolioAgg; filteredMarkets: MarketRow[]; feeTable: FeeRow[] }) {
   const insights = useMemo(() => {
     if (filteredMarkets.length === 0) return [];
     const result: string[] = [];
 
-    // 1. Top region share of NCI
+    // 1. Top region share of Estimated Net Economic Benefit
     let topRegion = ''; let topRegionNci = -Infinity;
     agg.regionNciMap.forEach((v, k) => { if (v > topRegionNci) { topRegionNci = v; topRegion = k; } });
     if (topRegion && agg.totalNetImpact !== 0) {
       const share = Math.abs(topRegionNci / agg.totalNetImpact * 100);
-      result.push(`${topRegion} currently represents ${share.toFixed(0)}% of total estimated portfolio net commercial impact under current assumptions.`);
+      result.push(`${topRegion} currently represents ${share.toFixed(0)}% of total estimated portfolio Estimated Net Economic Benefit under current assumptions.`);
     }
 
     // 2. Best provider
     let topProvider = ''; let topProviderNci = -Infinity;
     agg.providerNciMap.forEach((v, k) => { if (v > topProviderNci) { topProviderNci = v; topProvider = k; } });
     if (topProvider) {
-      result.push(`${topProvider} generates the highest estimated portfolio net commercial impact (${fmtCompact(topProviderNci)}) under current assumptions.`);
+      result.push(`${topProvider} generates the highest Estimated Net Economic Benefit (${fmtCompact(topProviderNci)}) across the filtered portfolio under current assumptions.`);
     }
 
-    // 3. Highest adoption region
-    let topAdoptionRegion = ''; let topAdoption = 0;
-    agg.regionAdoptionMap.forEach((v, k) => {
-      const avg = v.sum / v.count;
-      if (avg > topAdoption) { topAdoption = avg; topAdoptionRegion = k; }
+    // 3. Wave 1 count
+    const wave1Markets = filteredMarkets.filter(m => {
+      const feeRow = resolveMarketFeeRow(m, feeTable);
+      if (!feeRow) return false;
+      const { netImpact, incrementalCost } = calcMarket(m, feeTable);
+      const oLevel = opportunityLevel(netImpact);
+      const wave = rolloutWave(oLevel, m.confidence ?? 'Low');
+      return wave === 1;
     });
-    if (topAdoptionRegion) {
-      result.push(`${topAdoptionRegion} has the highest expected average BNPL adoption rate at ${topAdoption.toFixed(1)}% across configured markets.`);
+    if (wave1Markets.length > 0) {
+      result.push(`${wave1Markets.length} market${wave1Markets.length !== 1 ? 's' : ''} qualify for Wave 1 priority rollout based on High opportunity level and High/Medium confidence. These represent the strongest near-term deployment candidates.`);
     }
 
-    // 4. Provider fee comment (lowest NCI provider if negative)
-    let lowestProvider = ''; let lowestNci = Infinity;
-    agg.providerNciMap.forEach((v, k) => { if (v < lowestNci && k !== topProvider) { lowestNci = v; lowestProvider = k; } });
-    if (lowestProvider && lowestNci < 0) {
-      result.push(`${lowestProvider} shows lower estimated portfolio return (${fmtCompact(lowestNci)}) — consider reviewing fee structure or adoption assumptions for markets using this provider.`);
+    // 4. Confidence distribution
+    const highConf = filteredMarkets.filter(m => m.confidence === 'High').length;
+    const lowConf = filteredMarkets.filter(m => m.confidence === 'Low').length;
+    if (lowConf > 0) {
+      result.push(`${lowConf} of ${filteredMarkets.length} configured market${filteredMarkets.length !== 1 ? 's' : ''} have Low confidence — assumptions for these markets should be independently validated before committing to rollout.`);
+    } else if (highConf === filteredMarkets.length) {
+      result.push(`All ${filteredMarkets.length} configured market${filteredMarkets.length !== 1 ? 's have' : ' has'} High confidence — the portfolio is well-supported for strategic decision-making.`);
     }
 
     // 5. Total BNPL volume note
@@ -369,7 +413,7 @@ function InsightsPanel({ agg, filteredMarkets }: { agg: PortfolioAgg; filteredMa
     }
 
     return result.slice(0, 5);
-  }, [agg, filteredMarkets]);
+  }, [agg, filteredMarkets, feeTable]);
 
   if (insights.length === 0) return null;
 
@@ -406,8 +450,10 @@ function MarketTable({
 }) {
   const providers = useMemo(() => [...new Set(feeTable.filter(f => f.active).map(f => f.provider))].sort(), [feeTable]);
 
+  const evaluatedRows = useMemo(() => rows.filter(r => resolveMarketFeeRow(r, feeTable) !== null), [rows, feeTable]);
+
   const totals = useMemo(() => {
-    return rows.reduce((acc, row) => {
+    return evaluatedRows.reduce((acc, row) => {
       const r = calcMarket(row, feeTable);
       return {
         registrations: acc.registrations + row.registrations,
@@ -417,23 +463,24 @@ function MarketTable({
         netImpact: acc.netImpact + r.netImpact,
       };
     }, { registrations: 0, bnplVolume: 0, bnplProcessingCost: 0, incrementalCost: 0, netImpact: 0 });
-  }, [rows, feeTable]);
+  }, [evaluatedRows, feeTable]);
 
   const hasMissingRate = rows.some(row => !resolveMarketFeeRow(row, feeTable));
+  const missingCount = rows.length - evaluatedRows.length;
 
   return (
     <div className="p-5 space-y-3">
       {hasMissingRate && (
         <div className="flex items-center gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
           <AlertTriangle size={12} className="flex-shrink-0" />
-          Some rows are missing a fee configuration for their provider/region combination. Net Impact for those rows shows $0. Add rates in Admin Configuration.
+          {missingCount} row{missingCount !== 1 ? 's are' : ' is'} missing a fee configuration. Those rows show "Not yet evaluated" and are excluded from totals and charts. Add rates in Admin Configuration.
         </div>
       )}
       <div className="overflow-x-auto rounded-xl border border-gray-200">
         <table className="w-full text-xs">
           <thead className="bg-gray-50 border-b border-gray-200">
             <tr>
-              {['Brand', 'Region', 'Provider', 'Registrations', 'Avg Entry Fee', 'BNPL Adoption %', 'Uplift %', 'Margin %', 'BNPL Volume', 'BNPL Processing Cost', 'Incr. Processing Cost', 'Net Commercial Impact', ''].map(h => (
+              {['Brand', 'Region', 'Provider', 'Confidence', 'Registrations', 'Avg Entry Fee', 'BNPL Adoption %', 'Uplift %', 'Margin %', 'BNPL Volume', 'BNPL Processing Cost', 'Incr. Processing Cost', 'Est. Net Economic Benefit', ''].map(h => (
                 <th key={h} className={thCls}>{h}</th>
               ))}
             </tr>
@@ -441,7 +488,7 @@ function MarketTable({
           <tbody className="divide-y divide-gray-100">
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={13} className="px-4 py-6 text-center text-xs text-gray-400">
+                <td colSpan={14} className="px-4 py-6 text-center text-xs text-gray-400">
                   No market rows match the current filter. Adjust filters or add a market row below.
                 </td>
               </tr>
@@ -465,6 +512,15 @@ function MarketTable({
                     <select className={selectCls} value={row.provider} onChange={e => onUpdate(row.id, 'provider', e.target.value)}>
                       {providers.map(p => <option key={p}>{p}</option>)}
                       {!providers.includes(row.provider) && <option>{row.provider}</option>}
+                    </select>
+                  </td>
+                  <td className="px-3 py-2.5">
+                    <select
+                      className={`${selectCls} w-auto`}
+                      value={row.confidence ?? 'Low'}
+                      onChange={e => onUpdate(row.id, 'confidence', e.target.value as ConfidenceLevel)}
+                    >
+                      {CONFIDENCE_LEVELS.map(c => <option key={c}>{c}</option>)}
                     </select>
                   </td>
                   <td className={tdCls}>
@@ -514,10 +570,13 @@ function MarketTable({
               );
             })}
           </tbody>
-          {rows.length > 0 && (
+          {evaluatedRows.length > 0 && (
             <tfoot className="bg-gray-50 border-t-2 border-gray-200">
               <tr>
-                <td colSpan={3} className="px-3 py-2.5 text-xs font-bold text-gray-700">Portfolio Totals</td>
+                <td colSpan={4} className="px-3 py-2.5 text-xs font-bold text-gray-700">
+                  Portfolio Totals
+                  {hasMissingRate && <span className="ml-1.5 text-[10px] font-normal text-amber-600">(evaluated rows only)</span>}
+                </td>
                 <td className="px-3 py-2.5 text-xs font-bold text-gray-800">{fmt(totals.registrations, 'number')}</td>
                 <td colSpan={4} />
                 <td className="px-3 py-2.5 text-xs font-bold text-gray-800">{fmtCompact(totals.bnplVolume)}</td>
@@ -552,7 +611,12 @@ function EventTable({
   onAdd: () => void;
   onRemove: (id: string) => void;
 }) {
-  const totals = useMemo(() => rows.reduce((acc, row) => {
+  const evaluatedRows = useMemo(() => rows.filter(row => {
+    const feeRow = feeTable.find(f => f.active && f.country.toLowerCase() === row.region.toLowerCase()) ?? null;
+    return feeRow !== null;
+  }), [rows, feeTable]);
+
+  const totals = useMemo(() => evaluatedRows.reduce((acc, row) => {
     const feeRow = feeTable.find(f => f.active && f.country.toLowerCase() === row.region.toLowerCase()) ?? null;
     const { bnplVolume, netImpact } = calcRowImpact(
       row.registrations, row.avgTicketPrice, row.bnplAdoptionPercent,
@@ -567,15 +631,23 @@ function EventTable({
       incrRevenue: acc.incrRevenue + incrRevenue,
       netImpact: acc.netImpact + netImpact,
     };
-  }, { registrations: 0, bnplVolume: 0, incrRevenue: 0, netImpact: 0 }), [rows, feeTable]);
+  }, { registrations: 0, bnplVolume: 0, incrRevenue: 0, netImpact: 0 }), [evaluatedRows, feeTable]);
+
+  const hasMissingRate = rows.length > evaluatedRows.length;
 
   return (
     <div className="p-5 space-y-3">
+      {hasMissingRate && (
+        <div className="flex items-center gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+          <AlertTriangle size={12} className="flex-shrink-0" />
+          {rows.length - evaluatedRows.length} row{rows.length - evaluatedRows.length !== 1 ? 's are' : ' is'} missing fee configuration and excluded from totals.
+        </div>
+      )}
       <div className="overflow-x-auto rounded-xl border border-gray-200">
         <table className="w-full text-xs">
           <thead className="bg-gray-50 border-b border-gray-200">
             <tr>
-              {['Event Type', 'Region', 'Registrations', 'Avg Ticket Price', 'BNPL Adoption %', 'Uplift %', 'Margin %', 'BNPL Volume', 'Incremental Revenue', 'Net Commercial Impact', ''].map(h => (
+              {['Event Type', 'Region', 'Confidence', 'Registrations', 'Avg Ticket Price', 'BNPL Adoption %', 'Uplift %', 'Margin %', 'BNPL Volume', 'Incremental Revenue', 'Est. Net Economic Benefit', ''].map(h => (
                 <th key={h} className={thCls}>{h}</th>
               ))}
             </tr>
@@ -583,7 +655,7 @@ function EventTable({
           <tbody className="divide-y divide-gray-100">
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={11} className="px-4 py-6 text-center text-xs text-gray-400">
+                <td colSpan={12} className="px-4 py-6 text-center text-xs text-gray-400">
                   No event rows match the current filter.
                 </td>
               </tr>
@@ -607,6 +679,15 @@ function EventTable({
                   <td className={tdCls}>
                     <select className={selectCls} value={row.region} onChange={e => onUpdate(row.id, 'region', e.target.value as RegionName)}>
                       {ALL_REGIONS.map(r => <option key={r}>{r}</option>)}
+                    </select>
+                  </td>
+                  <td className="px-3 py-2.5">
+                    <select
+                      className={`${selectCls} w-auto`}
+                      value={row.confidence ?? 'Low'}
+                      onChange={e => onUpdate(row.id, 'confidence', e.target.value as ConfidenceLevel)}
+                    >
+                      {CONFIDENCE_LEVELS.map(c => <option key={c}>{c}</option>)}
                     </select>
                   </td>
                   <td className={tdCls}>
@@ -648,10 +729,13 @@ function EventTable({
               );
             })}
           </tbody>
-          {rows.length > 0 && (
+          {evaluatedRows.length > 0 && (
             <tfoot className="bg-gray-50 border-t-2 border-gray-200">
               <tr>
-                <td colSpan={2} className="px-3 py-2.5 text-xs font-bold text-gray-700">Portfolio Totals</td>
+                <td colSpan={3} className="px-3 py-2.5 text-xs font-bold text-gray-700">
+                  Portfolio Totals
+                  {hasMissingRate && <span className="ml-1.5 text-[10px] font-normal text-amber-600">(evaluated rows only)</span>}
+                </td>
                 <td className="px-3 py-2.5 text-xs font-bold text-gray-800">{fmt(totals.registrations, 'number')}</td>
                 <td colSpan={4} />
                 <td className="px-3 py-2.5 text-xs font-bold text-gray-800">{fmtCompact(totals.bnplVolume)}</td>
@@ -731,7 +815,7 @@ function ProviderDashboard({ marketRows, feeTable }: { marketRows: MarketRow[]; 
         <div className="flex items-start gap-3 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3">
           <Award size={16} className="text-emerald-600 flex-shrink-0 mt-0.5" />
           <p className="text-sm text-gray-800 leading-relaxed">
-            Based on current assumptions, <strong className="text-emerald-700">{best.provider}</strong> generates the highest estimated portfolio net commercial impact
+            Based on current assumptions, <strong className="text-emerald-700">{best.provider}</strong> generates the highest Estimated Net Economic Benefit
             {' '}(<strong className="text-emerald-700">{fmtCompact(best.totalNetImpact)}</strong>) across {best.marketCount} configured market{best.marketCount !== 1 ? 's' : ''}.
           </p>
         </div>
@@ -740,7 +824,7 @@ function ProviderDashboard({ marketRows, feeTable }: { marketRows: MarketRow[]; 
         <table className="w-full text-xs">
           <thead className="bg-gray-50 border-b border-gray-200">
             <tr>
-              {['Provider', 'Regions Enabled', 'Avg Fee %', 'Avg Adoption', 'Total BNPL Volume', 'Total BNPL Cost', 'Total Incr. Cost', 'Net Commercial Impact', 'Recommendation'].map(h => (
+              {['Provider', 'Regions Enabled', 'Avg Fee %', 'Avg Adoption', 'Total BNPL Volume', 'Total BNPL Cost', 'Total Incr. Cost', 'Est. Net Economic Benefit', 'Recommendation'].map(h => (
                 <th key={h} className={thCls}>{h}</th>
               ))}
             </tr>
@@ -784,30 +868,51 @@ function RolloutMatrix({ marketRows, feeTable }: { marketRows: MarketRow[]; feeT
     const configured = ALL_REGIONS.filter(region => marketRows.some(m => m.region === region));
     return configured.map(region => {
       const rows = marketRows.filter(m => m.region === region);
-      let totalNci = 0, totalBnplVolume = 0;
+      let totalNci = 0, totalBnplVolume = 0, totalIncrCost = 0;
+      let hasFeeConfig = false;
+
       rows.forEach(m => {
-        const r = calcMarket(m, feeTable);
-        totalNci += r.netImpact;
-        totalBnplVolume += r.bnplVolume;
+        const feeRow = resolveMarketFeeRow(m, feeTable);
+        if (feeRow) {
+          hasFeeConfig = true;
+          const r = calcMarket(m, feeTable);
+          totalNci += r.netImpact;
+          totalBnplVolume += r.bnplVolume;
+          totalIncrCost += r.incrementalCost;
+        }
       });
 
       const bestProvider = rows.length > 0
         ? (() => {
             const pMap = new Map<string, number>();
-            rows.forEach(m => { pMap.set(m.provider, (pMap.get(m.provider) ?? 0) + calcMarket(m, feeTable).netImpact); });
+            rows.forEach(m => {
+              const feeRow = resolveMarketFeeRow(m, feeTable);
+              if (feeRow) pMap.set(m.provider, (pMap.get(m.provider) ?? 0) + calcMarket(m, feeTable).netImpact);
+            });
+            if (pMap.size === 0) return rows[0].provider;
             let best = rows[0].provider, bestV = -Infinity;
             pMap.forEach((v, k) => { if (v > bestV) { bestV = v; best = k; } });
             return best;
           })()
         : '—';
 
+      // Dominant confidence: pick the most common, or lowest if tie
+      const confCounts = { High: 0, Medium: 0, Low: 0 };
+      rows.forEach(m => { confCounts[m.confidence ?? 'Low']++; });
+      const dominantConf: ConfidenceLevel =
+        confCounts.High >= confCounts.Medium && confCounts.High >= confCounts.Low ? 'High' :
+        confCounts.Medium >= confCounts.Low ? 'Medium' : 'Low';
+
       const level = opportunityLevel(totalNci);
+      const wave = rolloutWave(level, dominantConf);
+      const payback = calcPaybackPeriod(totalNci, totalIncrCost, hasFeeConfig);
+
       const rec =
-        level === 'High' ? 'Priority rollout — strong net commercial opportunity' :
+        level === 'High' ? 'Priority rollout — strong net economic opportunity' :
         level === 'Medium' ? 'Selective rollout — validate assumptions with a pilot event' :
         'Deferred rollout — monitor market conditions and provider availability';
 
-      return { region, level, bestProvider, markets: rows.length, totalBnplVolume, totalNci, recommendation: rec };
+      return { region, level, bestProvider, markets: rows.length, totalBnplVolume, totalNci, recommendation: rec, dominantConf, wave, payback, hasFeeConfig };
     }).sort((a, b) => b.totalNci - a.totalNci);
   }, [marketRows, feeTable]);
 
@@ -819,13 +924,44 @@ function RolloutMatrix({ marketRows, feeTable }: { marketRows: MarketRow[]; feeT
     );
   }
 
+  // Group into waves for the wave summary
+  const wave1 = regionStats.filter(r => r.wave === 1);
+  const wave2 = regionStats.filter(r => r.wave === 2);
+  const wave3 = regionStats.filter(r => r.wave === 3);
+
   return (
-    <div className="p-5">
+    <div className="p-5 space-y-5">
+      {/* Wave summary */}
+      <div className="grid grid-cols-3 gap-3">
+        {([
+          { wave: 1, label: 'Wave 1 — Priority', desc: 'High opportunity + High/Medium confidence', items: wave1, cls: 'bg-emerald-50 border-emerald-200' },
+          { wave: 2, label: 'Wave 2 — Selective', desc: 'Medium opportunity or Low confidence High', items: wave2, cls: 'bg-blue-50 border-blue-200' },
+          { wave: 3, label: 'Wave 3 — Deferred', desc: 'Low opportunity or insufficient confidence', items: wave3, cls: 'bg-gray-50 border-gray-200' },
+        ] as const).map(({ wave, label, desc, items, cls }) => (
+          <div key={wave} className={`rounded-xl border p-3 ${cls}`}>
+            <div className="flex items-center justify-between mb-1">
+              <span className={`text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded border ${WAVE_BADGE[wave as RolloutWave]}`}>Wave {wave}</span>
+              <span className="text-sm font-bold text-gray-800">{items.length} region{items.length !== 1 ? 's' : ''}</span>
+            </div>
+            <p className="text-[11px] font-semibold text-gray-700 mt-1">{label}</p>
+            <p className="text-[10px] text-gray-500 mt-0.5">{desc}</p>
+            {items.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-1">
+                {items.map(r => (
+                  <span key={r.region} className="text-[10px] px-1.5 py-0.5 bg-white border border-gray-200 rounded text-gray-600 font-medium">{r.region}</span>
+                ))}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* Detailed table */}
       <div className="overflow-x-auto rounded-xl border border-gray-200">
         <table className="w-full text-xs">
           <thead className="bg-gray-50 border-b border-gray-200">
             <tr>
-              {['Region', 'Recommended Provider', 'Opportunity Level', 'Markets', 'Est. BNPL Volume', 'Est. Net Commercial Impact', 'Recommendation'].map(h => (
+              {['Region', 'Rec. Provider', 'Opportunity', 'Confidence', 'Wave', 'Payback Period', 'Markets', 'Est. BNPL Volume', 'Est. Net Economic Benefit', 'Recommendation'].map(h => (
                 <th key={h} className={thCls}>{h}</th>
               ))}
             </tr>
@@ -840,10 +976,27 @@ function RolloutMatrix({ marketRows, feeTable }: { marketRows: MarketRow[]; feeT
                     {OPPORTUNITY_DOT[r.level]} {r.level}
                   </span>
                 </td>
+                <td className="px-3 py-2.5">
+                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold border ${CONFIDENCE_BADGE[r.dominantConf]}`}>
+                    {r.dominantConf}
+                  </span>
+                </td>
+                <td className="px-3 py-2.5">
+                  <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold border ${WAVE_BADGE[r.wave]}`}>
+                    Wave {r.wave}
+                  </span>
+                </td>
+                <td className="px-3 py-2.5">
+                  <span className={`text-[11px] font-semibold px-1.5 py-0.5 rounded ${PAYBACK_BADGE[r.payback]}`}>
+                    {r.payback}
+                  </span>
+                </td>
                 <td className={tdCls}>{r.markets}</td>
-                <td className="px-3 py-2.5 text-xs text-gray-600 font-mono whitespace-nowrap">{fmtCompact(r.totalBnplVolume)}</td>
-                <td className={`px-3 py-2.5 text-xs font-semibold whitespace-nowrap ${r.totalNci >= THRESHOLDS.medium ? 'text-emerald-700' : r.totalNci < 0 ? 'text-red-600' : 'text-amber-700'}`}>
-                  {r.totalNci >= 0 ? '+' : ''}{fmtCompact(r.totalNci)}
+                <td className="px-3 py-2.5 text-xs text-gray-600 font-mono whitespace-nowrap">
+                  {r.hasFeeConfig ? fmtCompact(r.totalBnplVolume) : <span className="text-gray-300 italic text-[10px]">Not yet evaluated</span>}
+                </td>
+                <td className={`px-3 py-2.5 text-xs font-semibold whitespace-nowrap ${r.hasFeeConfig ? (r.totalNci >= THRESHOLDS.medium ? 'text-emerald-700' : r.totalNci < 0 ? 'text-red-600' : 'text-amber-700') : 'text-gray-300'}`}>
+                  {r.hasFeeConfig ? `${r.totalNci >= 0 ? '+' : ''}${fmtCompact(r.totalNci)}` : <span className="italic text-[10px]">Not yet evaluated</span>}
                 </td>
                 <td className="px-3 py-2.5 text-xs text-gray-500 max-w-xs">{r.recommendation}</td>
               </tr>
@@ -851,30 +1004,33 @@ function RolloutMatrix({ marketRows, feeTable }: { marketRows: MarketRow[]; feeT
           </tbody>
         </table>
       </div>
-      <p className="text-[10px] text-gray-400 mt-2">
-        Only regions with configured market data are shown. High: Net Impact ≥ $50k · Medium: $25k–$50k · Low: Below $25k.
+      <p className="text-[10px] text-gray-400">
+        Only regions with configured market data are shown. High: Net Economic Benefit ≥ $50k · Medium: $25k–$50k · Low: Below $25k. Payback Period based on Benefit-to-Cost Ratio.
       </p>
     </div>
   );
 }
 
-// ─── Portfolio Charts (5 charts) ─────────────────────────────────────────────
+// ─── Portfolio Charts ─────────────────────────────────────────────────────────
 
 function PortfolioCharts({
   filteredMarkets, filteredEvents, feeTable,
 }: { filteredMarkets: MarketRow[]; filteredEvents: EventPortfolioRow[]; feeTable: FeeRow[] }) {
 
+  // Only evaluated rows feed charts
+  const evaluatedMarkets = useMemo(() => filteredMarkets.filter(m => resolveMarketFeeRow(m, feeTable) !== null), [filteredMarkets, feeTable]);
+
   const regionImpactData = useMemo(() => {
     const map = new Map<string, number>();
-    filteredMarkets.forEach(m => { map.set(m.region, (map.get(m.region) ?? 0) + calcMarket(m, feeTable).netImpact); });
+    evaluatedMarkets.forEach(m => { map.set(m.region, (map.get(m.region) ?? 0) + calcMarket(m, feeTable).netImpact); });
     return Array.from(map.entries()).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
-  }, [filteredMarkets, feeTable]);
+  }, [evaluatedMarkets, feeTable]);
 
   const providerData = useMemo(() => {
     const map = new Map<string, number>();
-    filteredMarkets.forEach(m => { map.set(m.provider, (map.get(m.provider) ?? 0) + calcMarket(m, feeTable).netImpact); });
+    evaluatedMarkets.forEach(m => { map.set(m.provider, (map.get(m.provider) ?? 0) + calcMarket(m, feeTable).netImpact); });
     return Array.from(map.entries()).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
-  }, [filteredMarkets, feeTable]);
+  }, [evaluatedMarkets, feeTable]);
 
   const adoptionData = useMemo(() => {
     const map = new Map<string, { sum: number; count: number }>();
@@ -891,13 +1047,12 @@ function PortfolioCharts({
     return Array.from(map.entries()).map(([name, value]) => ({ name, value }));
   }, [filteredEvents]);
 
-  // E. Top 10 rollout opportunities (market rows ranked by NCI)
   const top10Data = useMemo(() => {
-    return filteredMarkets
+    return evaluatedMarkets
       .map(m => ({ name: `${m.region} · ${m.provider}`, value: calcMarket(m, feeTable).netImpact }))
       .sort((a, b) => b.value - a.value)
       .slice(0, 10);
-  }, [filteredMarkets, feeTable]);
+  }, [evaluatedMarkets, feeTable]);
 
   const noData = filteredMarkets.length === 0 && filteredEvents.length === 0;
 
@@ -914,16 +1069,16 @@ function PortfolioCharts({
   return (
     <div className="p-5 space-y-4">
       <div className="grid grid-cols-2 gap-4">
-        {/* A: Net Impact by Region */}
+        {/* A: Est. Net Economic Benefit by Region */}
         <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">A. Net Commercial Impact by Region</p>
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">A. Est. Net Economic Benefit by Region</p>
           {regionImpactData.length === 0 ? <ChartEmpty /> : (
             <ResponsiveContainer width="100%" height={220}>
               <BarChart data={regionImpactData} barCategoryGap="35%" layout="vertical" margin={{ left: 90, right: 10 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" horizontal={false} />
                 <XAxis type="number" tick={{ fontSize: 9, fill: '#9ca3af' }} tickLine={false} axisLine={false} tickFormatter={v => fmtCompact(v as number)} />
                 <YAxis type="category" dataKey="name" tick={{ fontSize: 9, fill: '#6b7280' }} tickLine={false} axisLine={false} width={90} />
-                <Tooltip formatter={(v: unknown) => [fmtFull(v as number), 'Net Impact']} contentStyle={{ fontSize: 11, borderRadius: 8 }} />
+                <Tooltip formatter={(v: unknown) => [fmtFull(v as number), 'Net Economic Benefit']} contentStyle={{ fontSize: 11, borderRadius: 8 }} />
                 <Bar dataKey="value" radius={[0, 4, 4, 0]}>
                   {regionImpactData.map((_, i) => <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}
                 </Bar>
@@ -932,16 +1087,16 @@ function PortfolioCharts({
           )}
         </div>
 
-        {/* B: Provider Comparison */}
+        {/* B: Provider Comparison — Est. Net Economic Benefit */}
         <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">B. Provider Comparison — Net Impact</p>
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">B. Provider Comparison — Est. Net Economic Benefit</p>
           {providerData.length === 0 ? <ChartEmpty /> : (
             <ResponsiveContainer width="100%" height={220}>
               <BarChart data={providerData} barCategoryGap="40%">
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
                 <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#9ca3af' }} tickLine={false} axisLine={false} />
                 <YAxis tick={{ fontSize: 9, fill: '#9ca3af' }} tickLine={false} axisLine={false} tickFormatter={v => fmtCompact(v as number)} />
-                <Tooltip formatter={(v: unknown) => [fmtFull(v as number), 'Net Impact']} contentStyle={{ fontSize: 11, borderRadius: 8 }} />
+                <Tooltip formatter={(v: unknown) => [fmtFull(v as number), 'Net Economic Benefit']} contentStyle={{ fontSize: 11, borderRadius: 8 }} />
                 <Bar dataKey="value" radius={[4, 4, 0, 0]}>
                   {providerData.map((_, i) => <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}
                 </Bar>
@@ -950,7 +1105,7 @@ function PortfolioCharts({
           )}
         </div>
 
-        {/* C: Adoption by Region */}
+        {/* C: Average BNPL Adoption by Region */}
         <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
           <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">C. Average BNPL Adoption by Region</p>
           {adoptionData.length === 0 ? <ChartEmpty /> : (
@@ -987,14 +1142,14 @@ function PortfolioCharts({
 
       {/* E: Top 10 Rollout Opportunities — full width */}
       <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
-        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">E. Top 10 Rollout Opportunities — Net Commercial Impact</p>
+        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">E. Top 10 Rollout Opportunities — Est. Net Economic Benefit</p>
         {top10Data.length === 0 ? <ChartEmpty /> : (
           <ResponsiveContainer width="100%" height={240}>
             <BarChart data={top10Data} barCategoryGap="30%" layout="vertical" margin={{ left: 160, right: 60 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" horizontal={false} />
               <XAxis type="number" tick={{ fontSize: 9, fill: '#9ca3af' }} tickLine={false} axisLine={false} tickFormatter={v => fmtCompact(v as number)} />
               <YAxis type="category" dataKey="name" tick={{ fontSize: 9, fill: '#6b7280' }} tickLine={false} axisLine={false} width={160} />
-              <Tooltip formatter={(v: unknown) => [fmtFull(v as number), 'Net Impact']} contentStyle={{ fontSize: 11, borderRadius: 8 }} />
+              <Tooltip formatter={(v: unknown) => [fmtFull(v as number), 'Net Economic Benefit']} contentStyle={{ fontSize: 11, borderRadius: 8 }} />
               <Bar dataKey="value" radius={[0, 4, 4, 0]}>
                 {top10Data.map((_, i) => <Cell key={i} fill={i === 0 ? '#10b981' : CHART_COLORS[i % CHART_COLORS.length]} />)}
               </Bar>
@@ -1006,13 +1161,97 @@ function PortfolioCharts({
   );
 }
 
+// ─── CSV Export ───────────────────────────────────────────────────────────────
+
+function exportPortfolioCsv(marketRows: MarketRow[], eventRows: EventPortfolioRow[], feeTable: FeeRow[]) {
+  const now = new Date();
+  const dateStr = now.toISOString().slice(0, 10);
+  const dateTimeStr = `${dateStr} ${now.toTimeString().slice(0, 5)}`;
+
+  const rows: string[][] = [
+    ['IRONMAN BNPL Portfolio Opportunity Dashboard'],
+    ['Generated On', dateTimeStr],
+    [''],
+    ['MARKET COMPARISON'],
+    ['Brand', 'Region', 'Provider', 'Confidence', 'Registrations', 'Avg Entry Fee', 'BNPL Adoption %', 'Conversion Uplift %', 'Margin %', 'BNPL Volume', 'BNPL Processing Cost', 'Incr. Processing Cost', 'Est. Net Economic Benefit', 'Opportunity Level', 'Payback Period', 'Rollout Wave'],
+  ];
+
+  marketRows.forEach(m => {
+    const feeRow = resolveMarketFeeRow(m, feeTable);
+    const { bnplVolume, bnplProcessingCost, incrementalCost, netImpact } = calcMarket(m, feeTable);
+    const level = feeRow ? opportunityLevel(netImpact) : null;
+    const payback = feeRow ? calcPaybackPeriod(netImpact, incrementalCost, true) : 'Not Yet Evaluated';
+    const wave = level ? rolloutWave(level, m.confidence ?? 'Low') : '—';
+    rows.push([
+      m.brand, m.region, m.provider, m.confidence ?? 'Low',
+      String(m.registrations),
+      `$${m.avgEntryFee}`,
+      `${m.bnplAdoptionPercent}%`,
+      `${m.conversionUpliftPercent}%`,
+      `${m.contributionMarginPercent}%`,
+      feeRow ? fmtFull(bnplVolume) : 'Not Yet Evaluated',
+      feeRow ? fmtFull(bnplProcessingCost) : 'Not Yet Evaluated',
+      feeRow ? fmtFull(incrementalCost) : 'Not Yet Evaluated',
+      feeRow ? fmtFull(netImpact) : 'Not Yet Evaluated',
+      level ?? 'Not Yet Evaluated',
+      payback,
+      feeRow ? `Wave ${wave}` : 'Not Yet Evaluated',
+    ]);
+  });
+
+  rows.push(['']);
+  rows.push(['EVENT PORTFOLIO']);
+  rows.push(['Event Type', 'Region', 'Confidence', 'Registrations', 'Avg Ticket Price', 'BNPL Adoption %', 'Conversion Uplift %', 'Margin %', 'BNPL Volume', 'Incremental Revenue', 'Est. Net Economic Benefit']);
+
+  eventRows.forEach(e => {
+    const feeRow = feeTable.find(f => f.active && f.country.toLowerCase() === e.region.toLowerCase()) ?? null;
+    const { bnplVolume, netImpact } = calcRowImpact(
+      e.registrations, e.avgTicketPrice, e.bnplAdoptionPercent,
+      e.conversionUpliftPercent, e.contributionMarginPercent,
+      e.standardCardFeePercent, e.standardCardFixedFee,
+      feeRow, e.applyIntlFee, e.feeAbsorption, e.athleteSurchargePercent,
+    );
+    const incrRevenue = e.registrations * (e.conversionUpliftPercent / 100) * e.avgTicketPrice;
+    rows.push([
+      e.eventType, e.region, e.confidence ?? 'Low',
+      String(e.registrations),
+      `$${e.avgTicketPrice}`,
+      `${e.bnplAdoptionPercent}%`,
+      `${e.conversionUpliftPercent}%`,
+      `${e.contributionMarginPercent}%`,
+      feeRow ? fmtFull(bnplVolume) : 'Not Yet Evaluated',
+      fmtFull(incrRevenue),
+      feeRow ? fmtFull(netImpact) : 'Not Yet Evaluated',
+    ]);
+  });
+
+  rows.push(
+    [''],
+    ['MODEL LIMITATIONS'],
+    ['This portfolio export is intended for directional executive decision support only. All values are estimates based on user-defined assumptions.'],
+    ['Confidence levels reflect user-assigned data quality indicators. Low confidence rows should be independently validated before operational decisions are made.'],
+  );
+
+  const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `BNPL_Portfolio_Dashboard_${dateStr}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 // ─── Main Portfolio Dashboard ─────────────────────────────────────────────────
 
 interface PortfolioDashboardProps {
   config: AppConfig;
+  onExportCsv?: () => void;
 }
 
-export default function PortfolioDashboard({ config }: PortfolioDashboardProps) {
+export default function PortfolioDashboard({ config, onExportCsv }: PortfolioDashboardProps) {
   const [marketRows, setMarketRows] = useState<MarketRow[]>(() => loadMarketRows());
   const [eventRows, setEventRows] = useState<EventPortfolioRow[]>(() => loadEventRows());
   const [selectedBrand, setSelectedBrand] = useState<BrandName>('All Brands');
@@ -1036,7 +1275,7 @@ export default function PortfolioDashboard({ config }: PortfolioDashboardProps) 
     selectedRegions.includes(e.region)
   ), [eventRows, selectedRegions]);
 
-  // ── Portfolio aggregation engine ──
+  // ── Portfolio aggregation (evaluated rows only) ──
   const agg = useMemo<PortfolioAgg>(() => {
     const regionNciMap = new Map<string, number>();
     const providerNciMap = new Map<string, number>();
@@ -1047,6 +1286,8 @@ export default function PortfolioDashboard({ config }: PortfolioDashboardProps) 
     let totalBnplProcessingCost = 0, totalIncrementalCost = 0, totalNetImpact = 0;
 
     filteredMarkets.forEach(m => {
+      const feeRow = resolveMarketFeeRow(m, feeTable);
+      if (!feeRow) return;
       const r = calcMarket(m, feeTable);
       totalRegistrations += m.registrations;
       totalGrossRevenue += r.grossRevenue;
@@ -1107,6 +1348,7 @@ export default function PortfolioDashboard({ config }: PortfolioDashboardProps) 
     bnplAdoptionPercent: 10, conversionUpliftPercent: 3, contributionMarginPercent: 60,
     standardCardFeePercent: 2.70, standardCardFixedFee: 0.30,
     feeAbsorption: 'IRONMAN absorbs BNPL cost', athleteSurchargePercent: 1.5, applyIntlFee: true,
+    confidence: DEFAULT_CONFIDENCE['United States'],
   }]);
 
   const removeMarket = (id: string) => setMarketRows(prev => prev.filter(r => r.id !== id));
@@ -1120,11 +1362,31 @@ export default function PortfolioDashboard({ config }: PortfolioDashboardProps) 
     bnplAdoptionPercent: 12, conversionUpliftPercent: 3, contributionMarginPercent: 60,
     standardCardFeePercent: 2.70, standardCardFixedFee: 0.30,
     feeAbsorption: 'IRONMAN absorbs BNPL cost', athleteSurchargePercent: 1.5, applyIntlFee: true,
+    confidence: DEFAULT_CONFIDENCE['United States'],
   }]);
 
   const removeEvent = (id: string) => setEventRows(prev => prev.filter(r => r.id !== id));
 
+  // Expose CSV export function to parent via callback
+  const handleExportCsv = useCallback(() => {
+    exportPortfolioCsv(filteredMarkets, filteredEvents, feeTable);
+  }, [filteredMarkets, filteredEvents, feeTable]);
+
+  useEffect(() => {
+    if (onExportCsv) {
+      // Store ref so parent can trigger the export
+    }
+  }, [onExportCsv]);
+
+  // Make export accessible externally by exposing it through a custom event
+  useEffect(() => {
+    const handler = () => handleExportCsv();
+    window.addEventListener('portfolio-export-csv', handler);
+    return () => window.removeEventListener('portfolio-export-csv', handler);
+  }, [handleExportCsv]);
+
   const hasData = filteredMarkets.length > 0;
+  const evaluatedCount = filteredMarkets.filter(m => resolveMarketFeeRow(m, feeTable) !== null).length;
 
   return (
     <div className="max-w-screen-2xl mx-auto px-6 py-6 space-y-5">
@@ -1146,7 +1408,7 @@ export default function PortfolioDashboard({ config }: PortfolioDashboardProps) 
           <KpiCard
             label="Total Markets Evaluated"
             value={hasData ? fmt(filteredMarkets.length, 'number') : '—'}
-            sub={hasData ? `across ${[...new Set(filteredMarkets.map(m => m.region))].length} region${[...new Set(filteredMarkets.map(m => m.region))].length !== 1 ? 's' : ''}` : 'Configure market rows'}
+            sub={hasData ? `${evaluatedCount} with fee config · ${[...new Set(filteredMarkets.map(m => m.region))].length} region${[...new Set(filteredMarkets.map(m => m.region))].length !== 1 ? 's' : ''}` : 'Configure market rows'}
             icon={MapPin}
             color="blue"
           />
@@ -1159,36 +1421,36 @@ export default function PortfolioDashboard({ config }: PortfolioDashboardProps) 
           />
           <KpiCard
             label="Total BNPL Volume"
-            value={hasData ? fmtCompact(agg.totalBnplVolume) : '—'}
-            sub={hasData ? `${fmt(agg.totalBnplVolume / Math.max(agg.totalGrossRevenue, 1) * 100, 'percent')} of gross revenue` : undefined}
+            value={hasData && agg.totalBnplVolume > 0 ? fmtCompact(agg.totalBnplVolume) : '—'}
+            sub={hasData && agg.totalBnplVolume > 0 ? `${fmt(agg.totalBnplVolume / Math.max(agg.totalGrossRevenue, 1) * 100, 'percent')} of gross revenue` : undefined}
             icon={Activity}
             color="blue"
           />
           <KpiCard
             label="Total Incr. Processing Cost"
-            value={hasData ? (agg.totalIncrementalCost >= 0 ? '+' : '') + fmtCompact(agg.totalIncrementalCost) : '—'}
-            sub={hasData ? `BNPL processing cost: ${fmtCompact(agg.totalBnplProcessingCost)}` : undefined}
+            value={hasData && agg.totalBnplVolume > 0 ? (agg.totalIncrementalCost >= 0 ? '+' : '') + fmtCompact(agg.totalIncrementalCost) : '—'}
+            sub={hasData && agg.totalBnplVolume > 0 ? `BNPL processing cost: ${fmtCompact(agg.totalBnplProcessingCost)}` : undefined}
             icon={DollarSign}
             color={hasData && agg.totalIncrementalCost > 0 ? 'red' : 'default'}
           />
           <KpiCard
-            label="Total Net Commercial Impact"
-            value={hasData ? (agg.totalNetImpact >= 0 ? '+' : '') + fmtCompact(agg.totalNetImpact) : '—'}
-            sub={hasData ? 'Portfolio total (filtered)' : 'Configure market rows'}
+            label="Est. Net Economic Benefit"
+            value={hasData && agg.totalBnplVolume > 0 ? (agg.totalNetImpact >= 0 ? '+' : '') + fmtCompact(agg.totalNetImpact) : '—'}
+            sub={hasData && agg.totalBnplVolume > 0 ? 'Portfolio total (evaluated rows)' : 'Configure market rows'}
             icon={TrendingUp}
-            color={hasData ? (agg.totalNetImpact > 0 ? 'green' : agg.totalNetImpact < 0 ? 'red' : 'default') : 'default'}
+            color={hasData && agg.totalBnplVolume > 0 ? (agg.totalNetImpact > 0 ? 'green' : agg.totalNetImpact < 0 ? 'red' : 'default') : 'default'}
           />
           <KpiCard
             label="Highest Opportunity Region"
             value={hasData ? topRegion.name : '—'}
-            sub={hasData && topRegion.value > -Infinity ? fmtCompact(topRegion.value) + ' net impact' : undefined}
+            sub={hasData && topRegion.value > -Infinity ? fmtCompact(topRegion.value) + ' net benefit' : undefined}
             icon={Globe}
             color="green"
           />
           <KpiCard
             label="Top Performing Provider"
             value={hasData ? topProvider.name : '—'}
-            sub={hasData && topProvider.value > -Infinity ? fmtCompact(topProvider.value) + ' net impact' : undefined}
+            sub={hasData && topProvider.value > -Infinity ? fmtCompact(topProvider.value) + ' net benefit' : undefined}
             icon={Award}
             color="green"
           />
@@ -1202,7 +1464,7 @@ export default function PortfolioDashboard({ config }: PortfolioDashboardProps) 
           <KpiCard
             label="Recommended Provider Mix"
             value={hasData ? recProviderMix : '—'}
-            sub={hasData ? 'By highest net impact' : undefined}
+            sub={hasData ? 'By highest net benefit' : undefined}
             icon={Zap}
             color="default"
           />
@@ -1217,12 +1479,12 @@ export default function PortfolioDashboard({ config }: PortfolioDashboardProps) 
       </div>
 
       {/* ── Executive Insights ── */}
-      {hasData && <InsightsPanel agg={agg} filteredMarkets={filteredMarkets} />}
+      {hasData && <InsightsPanel agg={agg} filteredMarkets={filteredMarkets} feeTable={feeTable} />}
 
       {/* ── Charts ── */}
       <CollapsiblePanel
         title="Portfolio Charts"
-        subtitle="5 dynamic charts: net impact by region, provider comparison, adoption, event distribution, and top rollout opportunities"
+        subtitle="5 dynamic charts: net economic benefit by region, provider comparison, adoption, event distribution, and top rollout opportunities"
         badge="5 Charts"
         defaultOpen={true}
       >
@@ -1232,7 +1494,7 @@ export default function PortfolioDashboard({ config }: PortfolioDashboardProps) 
       {/* ── Market Comparison ── */}
       <CollapsiblePanel
         title="Market Comparison"
-        subtitle="Editable BNPL economics across brands, regions, and providers — includes portfolio totals row"
+        subtitle="Editable BNPL economics across brands, regions, and providers — includes confidence, payback period, and portfolio totals row"
         badge={`${filteredMarkets.length} rows`}
         defaultOpen={true}
       >
@@ -1248,7 +1510,7 @@ export default function PortfolioDashboard({ config }: PortfolioDashboardProps) 
       {/* ── Event Portfolio ── */}
       <CollapsiblePanel
         title="Event Portfolio View"
-        subtitle="BNPL opportunity by event category and region — includes portfolio totals row"
+        subtitle="BNPL opportunity by event category and region — includes confidence and portfolio totals row"
         badge={`${filteredEvents.length} rows`}
         defaultOpen={true}
       >
@@ -1264,7 +1526,7 @@ export default function PortfolioDashboard({ config }: PortfolioDashboardProps) 
       {/* ── Provider Dashboard ── */}
       <CollapsiblePanel
         title="Provider Comparison Dashboard"
-        subtitle="Aggregated net impact, volume, and executive recommendations by provider"
+        subtitle="Aggregated net economic benefit, volume, and executive recommendations by provider"
         defaultOpen={true}
       >
         <ProviderDashboard marketRows={filteredMarkets} feeTable={feeTable} />
@@ -1273,7 +1535,7 @@ export default function PortfolioDashboard({ config }: PortfolioDashboardProps) 
       {/* ── Rollout Matrix ── */}
       <CollapsiblePanel
         title="Rollout Opportunity Matrix"
-        subtitle="Executive rollout priority by region — only configured regions shown"
+        subtitle="Executive rollout priority by region — Wave classification, Confidence badges, Payback Period, and only configured regions shown"
         defaultOpen={true}
       >
         <RolloutMatrix marketRows={filteredMarkets} feeTable={feeTable} />
@@ -1302,6 +1564,18 @@ export default function PortfolioDashboard({ config }: PortfolioDashboardProps) 
             </div>
           ))}
         </div>
+      </div>
+
+      {/* ── Export button (inline, bottom of dashboard) ── */}
+      <div className="flex justify-end">
+        <button
+          type="button"
+          onClick={() => exportPortfolioCsv(filteredMarkets, filteredEvents, feeTable)}
+          className="flex items-center gap-2 px-4 py-2 text-xs font-semibold bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-all"
+        >
+          <Download size={13} />
+          Export Portfolio CSV
+        </button>
       </div>
     </div>
   );

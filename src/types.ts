@@ -21,6 +21,28 @@ export const ALL_REGIONS: RegionName[] = [
   'New Zealand', 'Northern Europe', 'Southern Europe', 'Central Europe',
 ];
 
+// Maps portfolio RegionName → fee-table country string(s) for lookup fallback
+export const REGION_FEE_ALIASES: Record<string, string[]> = {
+  'Central Europe':  ['EEA Central Europe', 'central europe'],
+  'Northern Europe': ['EEA Northern Europe', 'northern europe'],
+  'Southern Europe': ['EEA Southern Europe', 'southern europe'],
+};
+
+export type ConfidenceLevel = 'High' | 'Medium' | 'Low';
+
+export const CONFIDENCE_LEVELS: ConfidenceLevel[] = ['High', 'Medium', 'Low'];
+
+export const DEFAULT_CONFIDENCE: Record<RegionName, ConfidenceLevel> = {
+  'United States':   'High',
+  'Australia':       'Medium',
+  'United Kingdom':  'Medium',
+  'Canada':          'Medium',
+  'Northern Europe': 'Low',
+  'Central Europe':  'Low',
+  'Southern Europe': 'Low',
+  'New Zealand':     'Low',
+};
+
 export const EVENT_PORTFOLIO_TYPES = [
   'IRONMAN Full Distance',
   'IRONMAN 70.3',
@@ -44,6 +66,7 @@ export interface MarketRow {
   feeAbsorption: FeeAbsorption;
   athleteSurchargePercent: number;
   applyIntlFee: boolean;
+  confidence: ConfidenceLevel;
 }
 
 export interface EventPortfolioRow {
@@ -60,6 +83,7 @@ export interface EventPortfolioRow {
   feeAbsorption: FeeAbsorption;
   athleteSurchargePercent: number;
   applyIntlFee: boolean;
+  confidence: ConfidenceLevel;
 }
 
 export interface ConfigMetadata {
