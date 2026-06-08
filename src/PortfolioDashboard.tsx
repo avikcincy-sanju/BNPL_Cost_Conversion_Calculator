@@ -163,6 +163,22 @@ function paybackBadgeCls(p: string): string {
 
 const CHART_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#84cc16'];
 
+// ─── NEB Tooltip ──────────────────────────────────────────────────────────────
+
+const NEB_TOOLTIP = 'Estimated incremental contribution generated from BNPL adoption and conversion uplift after deducting estimated incremental processing costs.';
+
+function NebInfo() {
+  return (
+    <span
+      title={NEB_TOOLTIP}
+      className="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full bg-gray-200 text-gray-500 text-[9px] font-bold cursor-help hover:bg-blue-200 hover:text-blue-700 transition-colors flex-shrink-0"
+      aria-label={NEB_TOOLTIP}
+    >
+      i
+    </span>
+  );
+}
+
 // ─── Shared UI ────────────────────────────────────────────────────────────────
 
 const thCls = 'px-3 py-2.5 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap';
@@ -173,8 +189,8 @@ const selectCls = inputCls + ' cursor-pointer appearance-none';
 type CardColor = 'green' | 'blue' | 'amber' | 'red' | 'default';
 
 function KpiCard({
-  label, value, sub, icon: Icon, color = 'default',
-}: { label: string; value: string; sub?: string; icon?: React.ElementType; color?: CardColor }) {
+  label, value, sub, icon: Icon, color = 'default', showNebTooltip = false,
+}: { label: string; value: string; sub?: string; icon?: React.ElementType; color?: CardColor; showNebTooltip?: boolean }) {
   const bg: Record<CardColor, string> = {
     green: 'bg-emerald-50 border-emerald-200',
     blue: 'bg-blue-50 border-blue-200',
@@ -194,6 +210,7 @@ function KpiCard({
       <div className="flex items-center gap-1.5 mb-1.5">
         {Icon && <Icon size={12} className={`${vc[color]} flex-shrink-0`} />}
         <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide leading-tight">{label}</p>
+        {showNebTooltip && <NebInfo />}
       </div>
       <p className={`text-lg font-bold leading-tight ${vc[color]}`}>{value}</p>
       {sub && <p className="text-[11px] text-gray-500 mt-0.5 leading-snug">{sub}</p>}
@@ -403,7 +420,8 @@ function InsightsPanel({ agg, filteredMarkets, feeTable }: { agg: PortfolioAgg; 
     const lowConf = filteredMarkets.filter(m => m.confidence === 'Low').length;
     const highConf = filteredMarkets.filter(m => m.confidence === 'High').length;
     if (lowConf > 0) {
-      result.push(`${lowConf} of ${filteredMarkets.length} markets carry Low confidence — underlying assumptions for these markets should be independently validated before operational or financial commitments are made.`);
+      const pct = Math.round(lowConf / filteredMarkets.length * 100);
+      result.push(`${pct}% of evaluated markets currently rely on low-confidence assumptions and should be validated before investment decisions are finalized.`);
     } else if (highConf === filteredMarkets.length) {
       result.push(`All ${filteredMarkets.length} markets in the filtered view carry High confidence, providing a strong evidential basis for executive decision-making.`);
     } else {
@@ -497,9 +515,11 @@ function MarketTable({
         <table className="w-full text-xs">
           <thead className="bg-gray-50 border-b border-gray-200">
             <tr>
-              {['Brand', 'Region', 'Provider', 'Confidence', 'Registrations', 'Avg Entry Fee', 'BNPL Adoption %', 'Uplift %', 'Margin %', 'BNPL Volume', 'BNPL Processing Cost', 'Incr. Processing Cost', 'Est. Net Economic Benefit', ''].map(h => (
+              {['Brand', 'Region', 'Provider', 'Confidence', 'Registrations', 'Avg Entry Fee', 'BNPL Adoption %', 'Uplift %', 'Margin %', 'BNPL Volume', 'BNPL Processing Cost', 'Incr. Processing Cost'].map(h => (
                 <th key={h} className={thCls}>{h}</th>
               ))}
+              <th className={thCls}><span className="flex items-center gap-1">Est. Net Economic Benefit <NebInfo /></span></th>
+              <th className={thCls}></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
@@ -678,9 +698,11 @@ function EventTable({
         <table className="w-full text-xs">
           <thead className="bg-gray-50 border-b border-gray-200">
             <tr>
-              {['Event Type', 'Region', 'Confidence', 'Registrations', 'Avg Ticket Price', 'BNPL Adoption %', 'Uplift %', 'Margin %', 'BNPL Volume', 'Incremental Revenue', 'Est. Net Economic Benefit', ''].map(h => (
+              {['Event Type', 'Region', 'Confidence', 'Registrations', 'Avg Ticket Price', 'BNPL Adoption %', 'Uplift %', 'Margin %', 'BNPL Volume', 'Incremental Revenue'].map(h => (
                 <th key={h} className={thCls}>{h}</th>
               ))}
+              <th className={thCls}><span className="flex items-center gap-1">Est. Net Economic Benefit <NebInfo /></span></th>
+              <th className={thCls}></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
@@ -894,9 +916,11 @@ function ProviderDashboard({ marketRows, feeTable }: { marketRows: MarketRow[]; 
         <table className="w-full text-xs">
           <thead className="bg-gray-50 border-b border-gray-200">
             <tr>
-              {['Provider', 'Regions Enabled', 'Avg Fee %', 'Avg Adoption', 'Total BNPL Volume', 'Total BNPL Cost', 'Total Incr. Cost', 'Est. Net Economic Benefit', 'Recommendation'].map(h => (
+              {['Provider', 'Regions Enabled', 'Avg Fee %', 'Avg Adoption', 'Total BNPL Volume', 'Total BNPL Cost', 'Total Incr. Cost'].map(h => (
                 <th key={h} className={thCls}>{h}</th>
               ))}
+              <th className={thCls}><span className="flex items-center gap-1">Est. Net Economic Benefit <NebInfo /></span></th>
+              <th className={thCls}>Recommendation</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
@@ -943,7 +967,7 @@ function ProviderDashboard({ marketRows, feeTable }: { marketRows: MarketRow[]; 
                   <tr className="border-b border-gray-100">
                     <th className={thCls}>Region</th>
                     <th className={thCls}>Recommended Provider</th>
-                    <th className={thCls}>Est. NEB</th>
+                    <th className={thCls}><span className="flex items-center gap-1">Est. NEB <NebInfo /></span></th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
@@ -978,7 +1002,7 @@ function ProviderDashboard({ marketRows, feeTable }: { marketRows: MarketRow[]; 
                   <tr className="border-b border-gray-100">
                     <th className={thCls}>Brand</th>
                     <th className={thCls}>Recommended Provider</th>
-                    <th className={thCls}>Est. NEB</th>
+                    <th className={thCls}><span className="flex items-center gap-1">Est. NEB <NebInfo /></span></th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
@@ -1053,9 +1077,9 @@ function RolloutMatrix({ marketRows, feeTable }: { marketRows: MarketRow[]; feeT
       const payback = calcPaybackPeriod(totalNci, totalIncrCost, hasFeeConfig);
 
       const rec =
-        level === 'High' ? 'Priority rollout — strong net economic opportunity' :
-        level === 'Medium' ? 'Selective rollout — validate assumptions with a pilot event' :
-        'Deferred rollout — monitor market conditions and provider availability';
+        wave === 1 ? 'Priority rollout — strong net economic opportunity' :
+        wave === 2 ? 'Selective rollout — validate assumptions with a pilot event' :
+        'Deferred rollout — improve confidence through market validation before investment';
 
       return { region, level, bestProvider, markets: rows.length, totalBnplVolume, totalNci, recommendation: rec, dominantConf, wave, payback, hasFeeConfig };
     }).sort((a, b) => b.totalNci - a.totalNci);
@@ -1106,9 +1130,11 @@ function RolloutMatrix({ marketRows, feeTable }: { marketRows: MarketRow[]; feeT
         <table className="w-full text-xs">
           <thead className="bg-gray-50 border-b border-gray-200">
             <tr>
-              {['Region', 'Rec. Provider', 'Opportunity', 'Confidence', 'Wave', 'Payback Period', 'Markets', 'Est. BNPL Volume', 'Est. Net Economic Benefit', 'Recommendation'].map(h => (
+              {['Region', 'Rec. Provider', 'Opportunity', 'Confidence', 'Wave', 'Payback Period', 'Markets', 'Est. BNPL Volume'].map(h => (
                 <th key={h} className={thCls}>{h}</th>
               ))}
+              <th className={thCls}><span className="flex items-center gap-1">Est. Net Economic Benefit <NebInfo /></span></th>
+              <th className={thCls}>Recommendation</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
@@ -1216,7 +1242,7 @@ function PortfolioCharts({
       <div className="grid grid-cols-2 gap-4">
         {/* A: Est. Net Economic Benefit by Region */}
         <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">A. Est. Net Economic Benefit by Region</p>
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3 flex items-center gap-1.5">A. Est. Net Economic Benefit by Region <NebInfo /></p>
           {regionImpactData.length === 0 ? <ChartEmpty /> : (
             <ResponsiveContainer width="100%" height={220}>
               <BarChart data={regionImpactData} barCategoryGap="35%" layout="vertical" margin={{ left: 90, right: 10 }}>
@@ -1234,7 +1260,7 @@ function PortfolioCharts({
 
         {/* B: Provider Comparison — Est. Net Economic Benefit */}
         <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">B. Provider Comparison — Est. Net Economic Benefit</p>
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3 flex items-center gap-1.5">B. Provider Comparison — Est. Net Economic Benefit <NebInfo /></p>
           {providerData.length === 0 ? <ChartEmpty /> : (
             <ResponsiveContainer width="100%" height={220}>
               <BarChart data={providerData} barCategoryGap="40%">
@@ -1287,7 +1313,7 @@ function PortfolioCharts({
 
       {/* E: Top 10 Rollout Opportunities — full width */}
       <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
-        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">E. Top 10 Rollout Opportunities — Est. Net Economic Benefit</p>
+        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3 flex items-center gap-1.5">E. Top 10 Rollout Opportunities — Est. Net Economic Benefit <NebInfo /></p>
         {top10Data.length === 0 ? <ChartEmpty /> : (
           <ResponsiveContainer width="100%" height={240}>
             <BarChart data={top10Data} barCategoryGap="30%" layout="vertical" margin={{ left: 160, right: 60 }}>
@@ -1582,6 +1608,7 @@ export default function PortfolioDashboard({ config, onExportCsv }: PortfolioDas
             label="Est. Net Economic Benefit"
             value={hasData && agg.totalBnplVolume > 0 ? (agg.totalNetImpact >= 0 ? '+' : '') + fmtCompact(agg.totalNetImpact) : '—'}
             sub={hasData && agg.totalBnplVolume > 0 ? 'Portfolio total (evaluated rows)' : 'Configure market rows'}
+            showNebTooltip
             icon={TrendingUp}
             color={hasData && agg.totalBnplVolume > 0 ? (agg.totalNetImpact > 0 ? 'green' : agg.totalNetImpact < 0 ? 'red' : 'default') : 'default'}
           />
